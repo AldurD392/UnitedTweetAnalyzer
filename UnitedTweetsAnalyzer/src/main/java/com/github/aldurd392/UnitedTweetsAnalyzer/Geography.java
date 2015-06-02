@@ -1,7 +1,6 @@
 package com.github.aldurd392.UnitedTweetsAnalyzer;
 
 import com.vividsolutions.jts.geom.Coordinate;
-import com.vividsolutions.jts.geom.GeometryFactory;
 import com.vividsolutions.jts.geom.MultiPolygon;
 import com.vividsolutions.jts.geom.Point;
 import org.geotools.data.DataStore;
@@ -31,7 +30,7 @@ public class Geography {
     private static final String STATE_NAME = "NAME";
 
     final private ArrayList<Map.Entry<String, MultiPolygon>> polygons;
-    final private GeometryFactory geometryFactory = JTSFactoryFinder.getGeometryFactory();
+    final private Point point = JTSFactoryFinder.getGeometryFactory().createPoint(new Coordinate());
 
     public Geography(String filePath) throws IOException {
         final File file = new File(filePath);
@@ -64,7 +63,9 @@ public class Geography {
     }
 
     public String query(Coordinate coordinate) {
-        final Point point = geometryFactory.createPoint(coordinate);
+        point.getCoordinate().setOrdinate(0, coordinate.getOrdinate(0));
+        point.getCoordinate().setOrdinate(1, coordinate.getOrdinate(1));
+        point.geometryChanged();
 
         for (Map.Entry<String, MultiPolygon> entry : this.polygons) {
             if (entry.getValue().contains(point)) {
