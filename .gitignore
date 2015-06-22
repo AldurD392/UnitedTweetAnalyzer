@@ -90,3 +90,9 @@ crashlytics-build.properties
 
 # Twitter4J
 twitter4j.properties
+
+# sqlite temp database
+*.db
+
+# mac Files
+.DS_store
