@@ -6,6 +6,7 @@ import java.io.IOException;
 
 public class Main {
     private static final String EXECUTABLE_NAME = "UnitedTweetsAnalyzer";
+    private static final String DEFAULT_DATABASE_PATH = "users.db";
 
     private static Options createOptions() {
         // Create the Options
@@ -28,6 +29,15 @@ public class Main {
                 .type(String.class)
                 .build();
         options.addOption(shapefile_path);
+
+        Option database_path = Option.builder("d")
+                .longOpt("database")
+                .desc("database path")
+                .hasArg(true)
+                .required(false)
+                .type(String.class)
+                .build();
+        options.addOption(database_path);
 
         Option help = Option.builder("h")
                 .longOpt("help")
@@ -62,6 +72,11 @@ public class Main {
                 throw new ParseException("missing required option -t");
             }
 
+            String database_path = commandLine.getOptionValue("d");
+            if (database_path == null) {
+                database_path = DEFAULT_DATABASE_PATH;
+            }
+
             String value = commandLine.getOptionValue("t");
             if ("store".equals(value)) {
                 String shapefile_path = commandLine.getOptionValue("s");
@@ -70,8 +85,8 @@ public class Main {
                 }
 
                 Geography geography = new Geography(shapefile_path);
-
-                Streamer streamer = new Streamer(geography);
+                Storage storage = new Storage(geography, database_path);
+                Streamer streamer = new Streamer(storage);
                 streamer.startListening();
             } else if ("learn".equals(value)) {
                 // TODO

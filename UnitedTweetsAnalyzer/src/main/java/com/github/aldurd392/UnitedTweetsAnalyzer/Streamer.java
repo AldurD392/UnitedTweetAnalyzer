@@ -1,7 +1,8 @@
 package com.github.aldurd392.UnitedTweetsAnalyzer;
 
-import com.vividsolutions.jts.geom.Coordinate;
 import twitter4j.*;
+
+import java.sql.SQLException;
 
 /**
  * UnitedTweetsAnalyzer - com.github.aldurd392.UnitedTweetsAnalyzer
@@ -9,7 +10,7 @@ import twitter4j.*;
  */
 public class Streamer {
 	
-	private Storage storage= null;
+	private final Storage storage;
 	
 	public Streamer(Storage storage){
 		this.storage = storage;
@@ -22,7 +23,11 @@ public class Streamer {
             @Override
             public void onStatus(Status status) {
                 System.out.println(status.getText());
-
+                try {
+                    storage.insertTweet(status);
+                } catch (SQLException e) {
+                    e.printStackTrace();
+                }
             }
 
             @Override

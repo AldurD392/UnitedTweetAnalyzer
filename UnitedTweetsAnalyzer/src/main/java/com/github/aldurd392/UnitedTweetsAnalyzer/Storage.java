@@ -1,126 +1,145 @@
 package com.github.aldurd392.UnitedTweetsAnalyzer;
 
-import java.sql.Statement;
-import java.io.File;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.SQLException;
-
 import com.vividsolutions.jts.geom.Coordinate;
-
 import twitter4j.GeoLocation;
 import twitter4j.Status;
 import twitter4j.User;
 
+import java.io.File;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+import java.sql.Statement;
+
 
 public class Storage {
-	
-	private Connection c = null;
-    private final Geography geography;
-	
-	public Storage(Geography geography){
-        this.geography = geography;
-	}
-	
-	public void connect(String dbName){
-		boolean exist = this.checkDataBase(dbName);
-		
-		try {
-			Class.forName("org.sqlite.JDBC");
-			this.c = DriverManager.getConnection("jdbc:sqlite:" + dbName);
-			
-			System.out.println("Opened database successfully");
-			
-			if (!exist) {
-				this.initDatabase();
-				System.out.println("Creazione tabelle");
-			}
-			
-			
-		} catch ( Exception e ) {
-			System.err.println( e.getClass().getName() + ": " + e.getMessage() );
-			System.exit(0);
-	    }
-	}
-	
-	private boolean checkDataBase(String dbName) {
-		File f = new File(dbName);
-		if(f.exists()){
-			return true;
-		} else {
-			return false;
-		}
-	}
-	
-	private void initDatabase() throws SQLException{
-		Statement stmt = this.c.createStatement();
-		
-		String userTable = "CREATE TABLE USER " +
-                   "(ID UNSIGNED BIG INT PRIMARY KEY NOT NULL," +
-                   " USERNAME TEXT NOT NULL," +
-                   " LANG VARCHAR(10)," + 
-                   " LOCATION VARCHAR(100)," +
-                   " UTC_OFFSET INT," + 
-                   " TIMEZONE VARCHAR(50))";
-		
-		stmt.executeUpdate(userTable);		
-		
-		String tweetTable = "CREATE TABLE TWEET " +
-                   "(ID UNSIGNED BIG INT PRIMARY KEY NOT NULL," +
-                   " LAT FLOAT NOT NULL," + 
-                   " LON FLOAT NOT NULL," +
-                   " COUNTRY VARCHAR(50)," +
-                   " USER_ID UNSIGNED BIG INT,"+ 
-                   " FOREIGN KEY(USER_ID) REFERENCES USER(ID))";						
-		
-		stmt.executeUpdate(tweetTable);
-		stmt.close();
+    private final static String TAG = Storage.class.getSimpleName() + ": ";
 
-		System.out.println("Creazione tabelle");
-	}
-	
-	public void insertUser(User user) throws SQLException{
-		
-		Statement stmt = this.c.createStatement();
-		
-		String insert = String.format(
-						"INSERT INTO USER " +
-						"(ID, USERNAME, LANG, LOCATION, UTC_OFFSET, TIMEZONE) " +
-						"VALUES (%l, %s, %s, %s, %d, %s);", 
-						user.getId(), user.getName(), user.getLang(), 
-						user.getLocation(), user.getUtcOffset(), 
-						user.getTimeZone());
-		
-		stmt.executeUpdate(insert);
-		stmt.close();
-	}
-	
-	public void insertTweet(Status tweet) throws SQLException{
-		
-		Statement stmt = this.c.createStatement();
+    private final static String JDBC_PREFIX = "jdbc:sqlite:";
+
+    private final static String ID = "ID";
+
+    private final static String USERNAME = "USERNAME";
+    private final static String LANG = "LANG";
+    private final static String LOCATION = "LOCATION";
+    private final static String UTC_OFFSET = "UTC_OFFSET";
+    private final static String TIMEZONE = "TIMEZONE";
+
+    private final static String LAT = "LAT";
+    private final static String LON = "LON";
+    private final static String COUNTRY = "COUNTRY";
+    private final static String USER_ID = "USER_ID";
+
+    private final static String TABLE_USER = "USER";
+    private final static String TABLE_TWEET = "TWEET";
+
+    private final Geography geography;
+    private Connection c = null;
+
+    public Storage(Geography geography, String database_path) {
+        this.geography = geography;
+        this.connect(database_path);
+    }
+
+    private void connect(String dp_path) {
+        boolean exist = this.checkDataBase(dp_path);
+
+        try {
+            Class.forName("org.sqlite.JDBC");
+            this.c = DriverManager.getConnection(JDBC_PREFIX + dp_path);
+
+            System.out.println(TAG + "Database successfully opened.");
+            if (!exist) {
+                this.initDatabase();
+            }
+        } catch (Exception e) {
+            System.err.println(TAG + e.getMessage());
+            System.exit(1);
+        }
+    }
+
+    private boolean checkDataBase(String db_path) {
+        return new File(db_path).exists();
+    }
+
+    private void initDatabase() throws SQLException {
+        Statement stmt = this.c.createStatement();
+
+        String userTable = "CREATE TABLE " + TABLE_USER +
+                String.format(" (%s UNSIGNED BIG INT PRIMARY KEY NOT NULL," +
+                                " %s TEXT NOT NULL," +
+                                " %s VARCHAR(10)," +
+                                " %s VARCHAR(100)," +
+                                " %s INT," +
+                                " %s VARCHAR(50))",
+                        ID, USERNAME, LANG, LOCATION, UTC_OFFSET, TIMEZONE);
+        stmt.executeUpdate(userTable);
+
+        String tweetTable = "CREATE TABLE " + TABLE_TWEET +
+                String.format(" (%s UNSIGNED BIG INT PRIMARY KEY NOT NULL," +
+                                " %s FLOAT NOT NULL," +
+                                " %s FLOAT NOT NULL," +
+                                " %s VARCHAR(50)," +
+                                " %s UNSIGNED BIG INT," +
+                                " FOREIGN KEY(%s) REFERENCES %s(%s))",
+                        ID, LAT, LON, COUNTRY, USER_ID, USER_ID, TABLE_USER, ID);
+        stmt.executeUpdate(tweetTable);
+
+        stmt.close();
+        System.out.println(TAG + "creating tables...");
+    }
+
+    private void insertUser(User user) throws SQLException {
+        if (user == null) {
+            // TODO: log error.
+            return;
+        }
+
+        // TODO: check for existence.
+        Statement stmt = this.c.createStatement();
+        String insert = "INSERT INTO " + TABLE_USER +
+                String.format(" (%s, %s, %s, %s, %s, %s) ",
+                        ID, USERNAME, LANG, LOCATION, UTC_OFFSET, TIMEZONE)
+                +
+                String.format("VALUES (%d, '%s', '%s', '%s', %d, '%s');",
+                        user.getId(), user.getName(),
+                        user.getLang(), user.getLocation(),
+                        user.getUtcOffset(), user.getTimeZone());
+        stmt.executeUpdate(insert);
+        stmt.close();
+    }
+
+    public void insertTweet(Status tweet) throws SQLException {
+        this.insertUser(tweet.getUser());
+
         GeoLocation geoLocation;
-        String country = null;
-		
-		if ((geoLocation = tweet.getGeoLocation()) != null) {
-            country = this.geography.query(
+        if ((geoLocation = tweet.getGeoLocation()) != null) {
+            String country = this.geography.query(
                     new Coordinate(geoLocation.getLongitude(), geoLocation.getLatitude())
             );
 
-		}
-		
-		String insert = String.format(
-						"INSERT INTO TWEET " +
-						"(ID, LAT, LON, COUNTRY, USER_ID) " +
-						"VALUES (%l, %f, %f, %s, %l);", 
-						tweet.getId(), tweet.getGeoLocation().getLatitude(), 
-						tweet.getGeoLocation().getLongitude(), country, 
-						tweet.getUser().getId());
-		
-		stmt.executeUpdate(insert);
-		stmt.close();
-	}
-	
-	public void close() throws SQLException{
-		this.c.close();
-	}
+            if (country != null) {
+                final Statement stmt = this.c.createStatement();
+
+                // TODO: check for existence.
+                String insert = "INSERT INTO " + TABLE_TWEET +
+                        String.format(
+                                " (%s, %s, %s, %s, %s) ",
+                                ID, LAT, LON, COUNTRY, USER_ID)
+                        +
+                        String.format(
+                                "VALUES (%d, %f, %f, '%s', %d);",
+                                tweet.getId(), tweet.getGeoLocation().getLatitude(),
+                                tweet.getGeoLocation().getLongitude(), country,
+                                tweet.getUser().getId());
+
+                stmt.executeUpdate(insert);
+                stmt.close();
+            }
+        }
+    }
+
+    public void close() throws SQLException {
+        this.c.close();
+    }
 }
