@@ -8,12 +8,12 @@ import twitter4j.*;
  * Created by aldur on 02/06/15.
  */
 public class Streamer {
-
-    private final Geography geography;
-
-    public Streamer(Geography geography) {
-        this.geography = geography;
-    }
+	
+	private Storage storage= null;
+	
+	public Streamer(Storage storage){
+		this.storage = storage;
+	}
 
     public void startListening() {
         TwitterStream twitterStream = new TwitterStreamFactory().getInstance();
@@ -21,18 +21,8 @@ public class Streamer {
         StatusListener listener = new StatusListener() {
             @Override
             public void onStatus(Status status) {
-                GeoLocation geoLocation;
-                if ((geoLocation = status.getGeoLocation()) != null) {
-                    System.out.println(geoLocation);
+                System.out.println(status.getText());
 
-                    User user = status.getUser();
-                    System.out.println("Username: " + user.getName());
-
-                    String state = Streamer.this.geography.query(
-                            new Coordinate(geoLocation.getLongitude(), geoLocation.getLatitude())
-                    );
-                    System.out.println(state);
-                }
             }
 
             @Override
