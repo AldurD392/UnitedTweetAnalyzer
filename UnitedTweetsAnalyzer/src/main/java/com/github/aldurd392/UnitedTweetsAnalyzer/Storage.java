@@ -45,6 +45,10 @@ public class Storage {
         boolean exist = this.checkDataBase(dp_path);
 
         try {
+        		/* 
+        		 * Class.forName() load dynamically the class
+        		 * to execute static blocks only once.
+        		 */
             Class.forName("org.sqlite.JDBC");
             this.c = DriverManager.getConnection(JDBC_PREFIX + dp_path);
 
@@ -101,10 +105,13 @@ public class Storage {
                 String.format(" (%s, %s, %s, %s, %s, %s) ",
                         ID, USERNAME, LANG, LOCATION, UTC_OFFSET, TIMEZONE)
                 +
-                String.format("VALUES (%d, '%s', '%s', '%s', %d, '%s');",
-                        user.getId(), user.getName(),
-                        user.getLang(), user.getLocation(),
-                        user.getUtcOffset(), user.getTimeZone());
+                String.format("VALUES (%d, '%s', %s, %s, %d, %s);",
+                        user.getId(),
+                        user.getName(),
+                        user.getLang() == null ? null : String.format("'%s'", user.getLang()), 
+                        user.getLocation() == null ? null : String.format("'%s'", user.getLocation()),
+                        user.getUtcOffset(),
+                        user.getTimeZone() == null ? null : String.format("'%s'", user.getTimeZone()));
         stmt.executeUpdate(insert);
         stmt.close();
     }
