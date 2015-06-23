@@ -2,8 +2,6 @@ package com.github.aldurd392.UnitedTweetsAnalyzer;
 
 import twitter4j.*;
 
-import java.sql.SQLException;
-
 /**
  * UnitedTweetsAnalyzer - com.github.aldurd392.UnitedTweetsAnalyzer
  * Created by aldur on 02/06/15.
@@ -22,12 +20,7 @@ public class Streamer {
         StatusListener listener = new StatusListener() {
             @Override
             public void onStatus(Status status) {
-                System.out.println(status.getText());
-                try {
-                    storage.insertTweet(status);
-                } catch (SQLException e) {
-                    e.printStackTrace();
-                }
+                storage.insertTweet(status);
             }
 
             @Override
