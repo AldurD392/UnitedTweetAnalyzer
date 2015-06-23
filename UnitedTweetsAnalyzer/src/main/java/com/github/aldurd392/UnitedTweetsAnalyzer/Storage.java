@@ -51,13 +51,13 @@ public class Storage {
 
         try {
             /*
-             * Class.forName() load dynamically the class
-             * to execute static blocks only once.
+             * Class.forName() dynamically loads the class
+             * in order to execute static blocks only once.
              */
             Class.forName(JDBC_DRIVER);
             this.c = DriverManager.getConnection(JDBC_PREFIX + dp_path);
 
-            logger.debug("Database successfully opeened.");
+            logger.debug("Database successfully opened.");
             if (!exist) {
                 this.initDatabase();
             }
@@ -73,30 +73,29 @@ public class Storage {
     }
 
     private void initDatabase() throws SQLException {
-        Statement stmt = this.c.createStatement();
+        try (Statement stmt = this.c.createStatement()) {
+            String userTable = "CREATE TABLE " + TABLE_USER +
+                    String.format(" (%s UNSIGNED BIG INT PRIMARY KEY NOT NULL," +
+                                    " %s TEXT NOT NULL," +
+                                    " %s VARCHAR(10)," +
+                                    " %s VARCHAR(100)," +
+                                    " %s INT," +
+                                    " %s VARCHAR(50))",
+                            ID, USERNAME, LANG, LOCATION, UTC_OFFSET, TIMEZONE);
+            stmt.executeUpdate(userTable);
 
-        logger.debug("Creating tables...");
-        String userTable = "CREATE TABLE " + TABLE_USER +
-                String.format(" (%s UNSIGNED BIG INT PRIMARY KEY NOT NULL," +
-                                " %s TEXT NOT NULL," +
-                                " %s VARCHAR(10)," +
-                                " %s VARCHAR(100)," +
-                                " %s INT," +
-                                " %s VARCHAR(50))",
-                        ID, USERNAME, LANG, LOCATION, UTC_OFFSET, TIMEZONE);
-        stmt.executeUpdate(userTable);
+            String tweetTable = "CREATE TABLE " + TABLE_TWEET +
+                    String.format(" (%s UNSIGNED BIG INT PRIMARY KEY NOT NULL," +
+                                    " %s FLOAT NOT NULL," +
+                                    " %s FLOAT NOT NULL," +
+                                    " %s VARCHAR(50)," +
+                                    " %s UNSIGNED BIG INT," +
+                                    " FOREIGN KEY(%s) REFERENCES %s(%s))",
+                            ID, LAT, LON, COUNTRY, USER_ID, USER_ID, TABLE_USER, ID);
+            stmt.executeUpdate(tweetTable);
 
-        String tweetTable = "CREATE TABLE " + TABLE_TWEET +
-                String.format(" (%s UNSIGNED BIG INT PRIMARY KEY NOT NULL," +
-                                " %s FLOAT NOT NULL," +
-                                " %s FLOAT NOT NULL," +
-                                " %s VARCHAR(50)," +
-                                " %s UNSIGNED BIG INT," +
-                                " FOREIGN KEY(%s) REFERENCES %s(%s))",
-                        ID, LAT, LON, COUNTRY, USER_ID, USER_ID, TABLE_USER, ID);
-        stmt.executeUpdate(tweetTable);
-
-        stmt.close();
+            logger.debug("Tables successfully created.");
+        }
     }
 
     private void insertUser(User user) throws SQLException {
@@ -105,17 +104,18 @@ public class Storage {
             return;
         }
 
-        String select = String.format("SELECT %s FROM %s WHERE %s = %d;",
-                ID, TABLE_USER, ID, user.getId());
-        try (Statement stmt = this.c.createStatement()) {
-            if (stmt.executeQuery(select).next()) {
-            /* The user already exists in our DB */
+        String select = String.format("SELECT %s FROM %s WHERE %s = ?;",
+                ID, TABLE_USER, ID);
+        try (PreparedStatement stmt = this.c.prepareStatement(select)) {
+            stmt.setLong(1, user.getId());
+
+            if (stmt.executeQuery().next()) {
+                /* The user already exists in our DB */
                 logger.debug("User {} - {} already exists in DB.", user.getId(), user.getName());
                 return;
             }
         } catch (SQLException e) {
             logger.error("Error while selecting user {}", user.getId());
-            logger.debug("{}", select);
             logger.debug(e);
 
             throw e;
@@ -123,20 +123,19 @@ public class Storage {
 
         String insert = "INSERT INTO " + TABLE_USER +
                 String.format(" (%s, %s, %s, %s, %s, %s) ",
-                        ID, USERNAME, LANG, LOCATION, UTC_OFFSET, TIMEZONE)
-                +
-                String.format("VALUES (%d, '%s', %s, %s, %d, %s);",
-                        user.getId(),
-                        user.getName().replace("'", "\'").replace('"', '\"'),
-                        user.getLang() == null ? null : String.format("'%s'", user.getLang()),
-                        user.getLocation() == null ? null : String.format("'%s'", user.getLocation()),
-                        user.getUtcOffset(),
-                        user.getTimeZone() == null ? null : String.format("'%s'", user.getTimeZone()));
-        try (Statement stmt = this.c.createStatement()) {
-            stmt.executeUpdate(insert);
+                        ID, USERNAME, LANG, LOCATION, UTC_OFFSET, TIMEZONE
+                ) + "VALUES (?, ?, ?, ?, ?, ?);";
+        try (PreparedStatement stmt = this.c.prepareStatement(insert)) {
+            stmt.setLong(1, user.getId());
+            stmt.setString(2, user.getName());
+            stmt.setString(3, user.getLang());
+            stmt.setString(4, user.getLocation());
+            stmt.setInt(5, user.getUtcOffset());
+            stmt.setString(6, user.getTimeZone());
+
+            stmt.executeUpdate();
         } catch (SQLException e) {
             logger.error("Error while inserting user {} {}", user.getId(), user.getName());
-            logger.debug("{}", insert);
             logger.debug(e);
 
             throw e;
@@ -159,12 +158,13 @@ public class Storage {
             );
 
             if (country != null) {
-            	
+
                 String select = String.format("SELECT %s FROM %s WHERE %s = ?;",
                         ID, TABLE_TWEET, ID);
-                
+
                 try (PreparedStatement stmt = this.c.prepareStatement(select)) {
-                		stmt.setLong(1, tweet.getId());
+                    stmt.setLong(1, tweet.getId());
+
                     if (stmt.executeQuery().next()) {
                         /* The tweet already exists in our DB */
                         logger.debug("Tweet {} already exists in DB.", tweet.getId());
@@ -184,12 +184,12 @@ public class Storage {
                                 ID, LAT, LON, COUNTRY, USER_ID);
 
                 try (PreparedStatement stmt = this.c.prepareStatement(insert)) {
-                		stmt.setLong(1, tweet.getId());
-                		stmt.setDouble(2, tweet.getGeoLocation().getLatitude());
-                		stmt.setDouble(3, tweet.getGeoLocation().getLongitude());
-                		stmt.setString(4, country);
-                		stmt.setLong(5, tweet.getUser().getId());
-                		
+                    stmt.setLong(1, tweet.getId());
+                    stmt.setDouble(2, tweet.getGeoLocation().getLatitude());
+                    stmt.setDouble(3, tweet.getGeoLocation().getLongitude());
+                    stmt.setString(4, country);
+                    stmt.setLong(5, tweet.getUser().getId());
+
                     stmt.executeUpdate();
                 } catch (SQLException e) {
                     logger.error("Error while inserting tweet {}", tweet.getId());
