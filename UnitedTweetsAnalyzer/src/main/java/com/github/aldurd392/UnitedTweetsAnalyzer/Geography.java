@@ -11,6 +11,7 @@ import org.geotools.data.simple.SimpleFeatureSource;
 import org.geotools.geometry.jts.JTSFactoryFinder;
 import org.opengis.feature.simple.SimpleFeature;
 import org.opengis.feature.simple.SimpleFeatureType;
+import twitter4j.GeoLocation;
 
 import java.io.File;
 import java.io.IOException;
@@ -74,5 +75,22 @@ public class Geography {
         }
 
         return null;
+    }
+
+    public static GeoLocation midPoint(GeoLocation a, GeoLocation b) {
+        final double dLon = Math.toRadians(b.getLongitude() - a.getLongitude());
+
+        final double lat1 = Math.toRadians(a.getLatitude());
+        final double lat2 = Math.toRadians(b.getLatitude());
+        final double lon1 = Math.toRadians(a.getLongitude());
+
+        final double Bx = Math.cos(lat2) * Math.cos(dLon);
+        final double By = Math.cos(lat2) * Math.sin(dLon);
+        final double lat3 = Math.atan2(Math.sin(lat1) + Math.sin(lat2),
+                Math.sqrt((Math.cos(lat1) + Bx) * (Math.cos(lat1) + Bx)
+                        + By * By));
+        final double lon3 = lon1 + Math.atan2(By, Math.cos(lat1) + Bx);
+
+        return new GeoLocation(Math.toDegrees(lat3), Math.toDegrees(lon3));
     }
 }

@@ -7,9 +7,8 @@ import twitter4j.*;
  * Created by aldur on 02/06/15.
  */
 public class Streamer {
-	
 	private final Storage storage;
-	
+
 	public Streamer(Storage storage){
 		this.storage = storage;
 	}
