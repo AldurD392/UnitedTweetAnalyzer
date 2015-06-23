@@ -1,8 +1,10 @@
 package com.github.aldurd392.UnitedTweetsAnalyzer;
 
 import com.vividsolutions.jts.geom.Coordinate;
+
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
 import twitter4j.GeoLocation;
 import twitter4j.Status;
 import twitter4j.User;
@@ -10,6 +12,7 @@ import twitter4j.User;
 import java.io.File;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Statement;
 
@@ -156,13 +159,15 @@ public class Storage {
             );
 
             if (country != null) {
-                String select = String.format("SELECT %s FROM %s WHERE %s = %d;",
-                        ID, TABLE_TWEET, ID, tweet.getId());
-                try (Statement stmt = this.c.createStatement()) {
-                    if (stmt.executeQuery(select).next()) {
+            	
+                String select = String.format("SELECT %s FROM %s WHERE %s = ?;",
+                        ID, TABLE_TWEET, ID);
+                
+                try (PreparedStatement stmt = this.c.prepareStatement(select)) {
+                		stmt.setLong(1, tweet.getId());
+                    if (stmt.executeQuery().next()) {
                         /* The tweet already exists in our DB */
                         logger.debug("Tweet {} already exists in DB.", tweet.getId());
-                        logger.debug("{}", select);
                         return;
                     }
                 } catch (SQLException e) {
@@ -175,19 +180,19 @@ public class Storage {
 
                 String insert = "INSERT INTO " + TABLE_TWEET +
                         String.format(
-                                " (%s, %s, %s, %s, %s) ",
-                                ID, LAT, LON, COUNTRY, USER_ID)
-                        +
-                        String.format(
-                                "VALUES (%d, %f, %f, '%s', %d);",
-                                tweet.getId(), tweet.getGeoLocation().getLatitude(),
-                                tweet.getGeoLocation().getLongitude(), country,
-                                tweet.getUser().getId());
-                try (Statement stmt = this.c.createStatement()) {
-                    stmt.executeUpdate(insert);
+                                " (%s, %s, %s, %s, %s) VALUES (?, ?, ?, ?, ?);",
+                                ID, LAT, LON, COUNTRY, USER_ID);
+
+                try (PreparedStatement stmt = this.c.prepareStatement(insert)) {
+                		stmt.setLong(1, tweet.getId());
+                		stmt.setDouble(2, tweet.getGeoLocation().getLatitude());
+                		stmt.setDouble(3, tweet.getGeoLocation().getLongitude());
+                		stmt.setString(4, country);
+                		stmt.setLong(5, tweet.getUser().getId());
+                		
+                    stmt.executeUpdate();
                 } catch (SQLException e) {
                     logger.error("Error while inserting tweet {}", tweet.getId());
-                    logger.debug("{}", insert);
                     logger.debug(e);
                 }
             }
