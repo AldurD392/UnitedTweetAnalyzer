@@ -3,7 +3,10 @@ package com.github.aldurd392.UnitedTweetsAnalyzer;
 
 import org.apache.commons.cli.*;
 
+import weka.core.Instance;
+
 import java.io.IOException;
+import java.sql.PreparedStatement;
 
 
 public class Main {
@@ -53,7 +56,7 @@ public class Main {
         return options;
     }
 
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) throws Exception {
         // Create the command line parser
         CommandLineParser parser = new DefaultParser();
         Options options = createOptions();
@@ -91,8 +94,12 @@ public class Main {
                 Streamer streamer = new Streamer(storage);
                 streamer.startListening();
             } else if ("learn".equals(value)) {
-                // TODO
-                throw new ParseException("-t \"learn\" is not implemented yet");
+            		
+            		TrainingData t = new TrainingData();
+            		t.loadTrainingData();
+            		NaiveBayes nb = new NaiveBayes(t);
+            		nb.classify();
+            		
             } else {
                 throw new ParseException(value + "is not a valid value for -t");
             }

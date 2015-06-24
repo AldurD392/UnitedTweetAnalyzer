@@ -1,0 +1,7 @@
+jdbcDriver=org.sqlite.JDBC
+jdbcURL=jdbc:sqlite:users.db
+
+UNSIGNED_BIG_INT=6
+INT=5
+TEXT=0
+VARCHAR=0
