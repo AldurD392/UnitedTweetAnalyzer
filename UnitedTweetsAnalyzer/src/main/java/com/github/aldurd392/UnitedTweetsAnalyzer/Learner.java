@@ -21,6 +21,7 @@ class Learner {
     private final static Logger logger = LogManager.getLogger(Learner.class.getSimpleName());
 
     public final static Map<String, Class<? extends AbstractClassifier>> classifiers;
+
     static {
         HashMap<String, Class<? extends AbstractClassifier>> map = new HashMap<>();
         map.put("nbayes", NaiveBayesUpdateable.class);
@@ -45,13 +46,13 @@ class Learner {
         this.loadData();
         this.classifierFactory(classifier_name);
     }
-    
-    public Instances getTrainingData(){
-    		return this.training_data;
+
+    public Instances getTrainingData() {
+        return this.training_data;
     }
-    
-    public AbstractClassifier getClassifier(){
-    		return this.classifier; 
+
+    public AbstractClassifier getClassifier() {
+        return this.classifier;
     }
 
     private void loadData() throws Exception {
@@ -118,11 +119,9 @@ class Learner {
     }
 
     public Evaluation buildAndEvaluate(float evaluation_rate) {
-        
         Evaluation eval = null;
-    	
-    		try {
-    			
+
+        try {
             if (evaluation_rate < 1) {
                 logger.info("Building and evaluating classifier {} with testing percentage {}...",
                         this.classifier.getClass().getSimpleName(), evaluation_rate);
@@ -147,11 +146,11 @@ class Learner {
                         new Random()
                 );
             }
-
         } catch (Exception e) {
             logger.error("Error while evaluating the classifier");
             logger.debug(e);
         }
-    		return eval;
+
+        return eval;
     }
 }

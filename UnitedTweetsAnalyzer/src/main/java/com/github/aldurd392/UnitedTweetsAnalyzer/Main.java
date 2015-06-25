@@ -4,9 +4,9 @@ package com.github.aldurd392.UnitedTweetsAnalyzer;
 import org.apache.commons.cli.*;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
 import weka.classifiers.Evaluation;
 
+import java.sql.SQLException;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
@@ -30,7 +30,7 @@ class Main {
             "learn"
     };
     private static final String LEARN_ALL = "all";
-    
+
     private static final Logger logger = LogManager.getLogger(Main.class.getSimpleName());
 
     private static Options createOptions() {
@@ -107,7 +107,6 @@ class Main {
         CommandLineParser parser = new DefaultParser();
         Options options = createOptions();
 
-        Storage storage = null;
         try {
             // Parse the command line arguments
             CommandLine commandLine = parser.parse(options, args);
@@ -121,7 +120,7 @@ class Main {
 
             // Validate the arguments
             if (!commandLine.hasOption(TASK)) {
-                throw new ParseException("missing required option -" +  TASK);
+                throw new ParseException("missing required option -" + TASK);
             }
 
             String database_path = commandLine.getOptionValue(DATABASE_PATH, DEFAULT_DATABASE_PATH);
@@ -136,7 +135,20 @@ class Main {
                 }
 
                 Geography geography = new Geography(shapefile_path);
-                storage = new Storage(geography, database_path);
+
+                final Storage storage = new Storage(geography, database_path);
+                Runtime.getRuntime().addShutdownHook(new Thread() {
+                    public void run() {
+                            try {
+                                storage.close();
+                                logger.info("Closing storage...");
+                            } catch (SQLException e) {
+                                logger.debug("Error while closing storage.");
+                                // We're shutting down, nothing we can do.
+                            }
+                        }
+                });
+
                 Streamer streamer = new Streamer(storage);
                 streamer.startListening();
             } else if (TASK_TYPE[1].equals(value)) {
@@ -162,36 +174,37 @@ class Main {
                     throw bad_evaluation_rate;
                 }
 
-                Evaluation eval = null;
-                
+                Evaluation eval;
                 if (classifier_name.equals(LEARN_ALL)) {
-                	
-                		Evaluation bestEval = null;
-                		Learner bestLearner = null;
+                    Evaluation bestEval = null;
+                    Learner bestLearner = null;
 
                     for (String classifier : Learner.classifiers.keySet()) {
-                    		Learner learner = new Learner(classifier);
-                    		eval = learner.buildAndEvaluate(evaluation_rate);
-                    		
-                    		logger.info(eval.toSummaryString("Results\n", true));
-                    		
-                    		int classIndex = learner.getTrainingData().classIndex();
-                    		
-                    		// Keep the best learner.
-                    		if (bestEval == null || eval.precision(classIndex) > bestEval.precision(classIndex) ){
-                    			bestEval = eval;
-                    			bestLearner = learner;
-                    		}
+                        Learner learner = new Learner(classifier);
+                        eval = learner.buildAndEvaluate(evaluation_rate);
+
+                        logger.info(eval.toSummaryString("Results\n", false));
+
+                        int classIndex = learner.getTrainingData().classIndex();
+                        // Keep the best learner.
+                        if (bestEval == null || eval.precision(classIndex) > bestEval.precision(classIndex)) {
+                            bestEval = eval;
+                            bestLearner = learner;
+                        }
                     }
-                    
+
                     // Print the best learner stats.
-                    System.out.println(bestEval.toSummaryString("\n=====\nBest Classifier: " + bestLearner.getClassifier().getClass().getSimpleName() + "\n=====\n", true));
-
+                    assert bestEval != null;
+                    System.out.println(
+                            bestEval.toSummaryString(
+                                    String.format("\n==== Best Classifier: %s ====\n",
+                                            bestLearner.getClassifier().getClass().getSimpleName()),
+                                    false)
+                    );
                 } else {
-            			Learner learner = new Learner(classifier_name);
+                    Learner learner = new Learner(classifier_name);
                     eval = learner.buildAndEvaluate(evaluation_rate);
-                    logger.info(eval.toSummaryString("Results\n", true));
-
+                    logger.info(eval.toSummaryString("Results\n", false));
                 }
             } else {
                 throw new ParseException(value + "is not a valid value for -" + TASK);
@@ -203,10 +216,6 @@ class Main {
 
             System.out.println("Parse exception: " + exp.getMessage());
             System.exit(1);
-        } finally {
-            if (storage != null) {
-                storage.close();
-            }
         }
     }
 }
