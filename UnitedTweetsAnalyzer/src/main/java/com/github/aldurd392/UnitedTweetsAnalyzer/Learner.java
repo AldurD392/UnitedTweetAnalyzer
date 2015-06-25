@@ -17,17 +17,16 @@ import java.util.*;
  * UnitedTweetsAnalyzer - com.github.aldurd392.UnitedTweetsAnalyzer
  * Created by aldur on 25/06/15.
  */
-public class Learner {
+class Learner {
     private final static Logger logger = LogManager.getLogger(Learner.class.getSimpleName());
 
-    public final static Map<String, Class> classifiers = Collections.unmodifiableMap(
-            new HashMap<String, Class>() {
-                {
-                    put("nbayes", NaiveBayesUpdateable.class);
-                    put("dtree", J48.class);
-                }
-            }
-    );
+    public final static Map<String, Class<? extends AbstractClassifier>> classifiers;
+    static {
+        HashMap<String, Class<? extends AbstractClassifier>> map = new HashMap<>();
+        map.put("nbayes", NaiveBayesUpdateable.class);
+        map.put("dtree", J48.class);
+        classifiers = Collections.unmodifiableMap(map);
+    }
 
     private final static String stringQuery = String.format(
             "SELECT %s.*, %s.%s " +
@@ -55,7 +54,7 @@ public class Learner {
     		return this.classifier; 
     }
 
-    public void loadData() throws Exception {
+    private void loadData() throws Exception {
         InstanceQuery query = null;
 
         try {
@@ -105,19 +104,6 @@ public class Learner {
 
         logger.debug("Classifier {} correctly created.", this.classifier.getClass().getSimpleName());
     }
-
-    /*
-    public void buildClassifier() throws Exception {
-        logger.info("Building classifier {}...", this.classifier.getClass().getSimpleName());
-
-        try {
-            this.classifier.buildClassifier(this.training_data);
-        } catch (Exception e) {
-            logger.error("Error while building classifier");
-            throw e;
-        }
-    }
-    */
 
     private Map.Entry<Instances, Instances> splitTrainingTestData(float percentage_split) {
         assert (percentage_split > 0 && percentage_split < 1);

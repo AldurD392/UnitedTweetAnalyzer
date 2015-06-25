@@ -16,20 +16,20 @@ import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Statement;
 
-public class Storage {
+class Storage {
     private final static String JDBC_PREFIX = "jdbc:sqlite:";
     private final static String JDBC_DRIVER = "org.sqlite.JDBC";
 
     public final static String ID = "ID";
 
-    public final static String USERNAME = "USERNAME";
-    public final static String LANG = "LANG";
-    public final static String LOCATION = "LOCATION";
-    public final static String UTC_OFFSET = "UTC_OFFSET";
-    public final static String TIMEZONE = "TIMEZONE";
+    private final static String USERNAME = "USERNAME";
+    private final static String LANG = "LANG";
+    private final static String LOCATION = "LOCATION";
+    private final static String UTC_OFFSET = "UTC_OFFSET";
+    private final static String TIMEZONE = "TIMEZONE";
 
-    public final static String LAT = "LAT";
-    public final static String LON = "LON";
+    private final static String LAT = "LAT";
+    private final static String LON = "LON";
     public final static String USER_ID = "USER_ID";
 
     public final static String TABLE_USER = "USER";

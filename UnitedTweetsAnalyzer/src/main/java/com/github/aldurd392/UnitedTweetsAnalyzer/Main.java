@@ -12,7 +12,7 @@ import java.util.HashSet;
 import java.util.Set;
 
 
-public class Main {
+class Main {
     private static final String EXECUTABLE_NAME = "UnitedTweetsAnalyzer";
 
     private static final String DEFAULT_DATABASE_PATH = "users.db";
@@ -107,6 +107,7 @@ public class Main {
         CommandLineParser parser = new DefaultParser();
         Options options = createOptions();
 
+        Storage storage = null;
         try {
             // Parse the command line arguments
             CommandLine commandLine = parser.parse(options, args);
@@ -135,7 +136,7 @@ public class Main {
                 }
 
                 Geography geography = new Geography(shapefile_path);
-                Storage storage = new Storage(geography, database_path);
+                storage = new Storage(geography, database_path);
                 Streamer streamer = new Streamer(storage);
                 streamer.startListening();
             } else if (TASK_TYPE[1].equals(value)) {
@@ -202,6 +203,10 @@ public class Main {
 
             System.out.println("Parse exception: " + exp.getMessage());
             System.exit(1);
+        } finally {
+            if (storage != null) {
+                storage.close();
+            }
         }
     }
 }

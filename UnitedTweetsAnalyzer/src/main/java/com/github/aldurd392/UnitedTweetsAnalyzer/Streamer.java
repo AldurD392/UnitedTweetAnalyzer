@@ -6,7 +6,7 @@ import twitter4j.*;
  * UnitedTweetsAnalyzer - com.github.aldurd392.UnitedTweetsAnalyzer
  * Created by aldur on 02/06/15.
  */
-public class Streamer {
+class Streamer {
 	private final Storage storage;
 
 	public Streamer(Storage storage){

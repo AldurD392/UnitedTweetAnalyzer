@@ -25,7 +25,7 @@ import java.util.Map;
  * UnitedTweetsAnalyzer - com.github.aldurd392.UnitedTweetsAnalyzer
  * Created by aldur on 02/06/15.
  */
-public class Geography {
+class Geography {
 
     private static final String TYPE = "url";
     private static final String STATE_NAME = "NAME";
