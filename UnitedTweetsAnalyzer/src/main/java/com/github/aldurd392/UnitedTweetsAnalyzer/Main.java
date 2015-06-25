@@ -28,7 +28,8 @@ class Main {
 
     private static final String[] TASK_TYPE = {
             "store",
-            "learn"
+            "learn",
+            "classify"
     };
     private static final String[] STREAM_BIAS_TYPE = {
             "geo",
@@ -165,60 +166,65 @@ class Main {
                 String streaming_bias = commandLine.getOptionValue(STREAM_BIAS, STREAM_BIAS_TYPE[0]);
                 Streamer streamer = new Streamer(storage);
                 streamer.startListening(streaming_bias.equals(STREAM_BIAS_TYPE[0]));
-            } else if (TASK_TYPE[1].equals(value)) {
+            } else if (TASK_TYPE[1].equals(value) || TASK_TYPE[2].equals(value)) {
                 String classifier_name = commandLine.getOptionValue(LEARNER_NAME);
                 if (classifier_name == null) {
                     throw new ParseException(
-                            "-" + TASK + " " + TASK_TYPE[1] + "requires a classifier name (-" + LEARNER_NAME + ")"
+                            "-" + TASK + " " + value + "requires a classifier name (-" + LEARNER_NAME + ")"
                     );
                 } else if (!classifier_name.equals(LEARN_ALL) && !Learner.classifiers.containsKey(classifier_name)) {
                     throw new ParseException("Invalid classifier name " + classifier_name);
                 }
 
-                String evaluation_rate_string = commandLine.getOptionValue(EVALUATION_RATE, DEFAULT_EVALUATION_RATE);
-                ParseException bad_evaluation_rate = new ParseException("Invalid evaluation value " + evaluation_rate_string);
+                if (TASK_TYPE[1].equals(value)) {
+                    String evaluation_rate_string = commandLine.getOptionValue(EVALUATION_RATE, DEFAULT_EVALUATION_RATE);
+                    ParseException bad_evaluation_rate = new ParseException("Invalid evaluation value " + evaluation_rate_string);
 
-                float evaluation_rate;
-                try {
-                    evaluation_rate = Float.parseFloat(evaluation_rate_string);
-                    if (evaluation_rate <= 0 || (evaluation_rate >= 1 && evaluation_rate < 2)) {
+                    float evaluation_rate;
+                    try {
+                        evaluation_rate = Float.parseFloat(evaluation_rate_string);
+                        if (evaluation_rate <= 0 || (evaluation_rate >= 1 && evaluation_rate < 2)) {
+                            throw bad_evaluation_rate;
+                        }
+                    } catch (NumberFormatException e) {
                         throw bad_evaluation_rate;
                     }
-                } catch (NumberFormatException e) {
-                    throw bad_evaluation_rate;
-                }
 
-                Evaluation eval;
-                if (classifier_name.equals(LEARN_ALL)) {
-                    Evaluation bestEval = null;
-                    Learner bestLearner = null;
+                    Evaluation eval;
+                    if (classifier_name.equals(LEARN_ALL)) {
+                        Evaluation bestEval = null;
+                        Learner bestLearner = null;
 
-                    for (String classifier : Learner.classifiers.keySet()) {
-                        Learner learner = new Learner(classifier);
-                        eval = learner.buildAndEvaluate(evaluation_rate);
+                        for (String classifier : Learner.classifiers.keySet()) {
+                            Learner learner = new Learner(classifier);
+                            eval = learner.buildAndEvaluate(evaluation_rate);
 
-                        logger.info(eval.toSummaryString("Results\n", false));
+                            logger.info(eval.toSummaryString("Results\n", false));
 
-                        int classIndex = learner.getTrainingData().classIndex();
-                        // Keep the best learner.
-                        if (bestEval == null || eval.precision(classIndex) > bestEval.precision(classIndex)) {
-                            bestEval = eval;
-                            bestLearner = learner;
+                            int classIndex = learner.getTrainingData().classIndex();
+                            // Keep the best learner.
+                            if (bestEval == null || eval.precision(classIndex) > bestEval.precision(classIndex)) {
+                                bestEval = eval;
+                                bestLearner = learner;
+                            }
                         }
-                    }
 
-                    // Print the best learner stats.
-                    assert bestEval != null;
-                    System.out.println(
-                            bestEval.toSummaryString(
-                                    String.format("\n==== Best Classifier: %s ====\n",
-                                            bestLearner.getClassifier().getClass().getSimpleName()),
-                                    false)
-                    );
+                        // Print the best learner stats.
+                        assert bestEval != null;
+                        System.out.println(
+                                bestEval.toSummaryString(
+                                        String.format("\n==== Best Classifier: %s ====\n",
+                                                bestLearner.getClassifier().getClass().getSimpleName()),
+                                        false)
+                        );
+                    } else {
+                        Learner learner = new Learner(classifier_name);
+                        eval = learner.buildAndEvaluate(evaluation_rate);
+                        logger.info(eval.toSummaryString("Results\n", false));
+                    }
                 } else {
                     Learner learner = new Learner(classifier_name);
-                    eval = learner.buildAndEvaluate(evaluation_rate);
-                    logger.info(eval.toSummaryString("Results\n", false));
+                    learner.buildAndClassify();
                 }
             } else {
                 throw new ParseException(value + "is not a valid value for -" + TASK);

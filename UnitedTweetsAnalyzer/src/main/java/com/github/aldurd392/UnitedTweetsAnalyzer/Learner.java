@@ -7,6 +7,7 @@ import weka.classifiers.Evaluation;
 import weka.classifiers.bayes.NaiveBayesUpdateable;
 import weka.classifiers.functions.LibSVM;
 import weka.classifiers.trees.J48;
+import weka.core.Instance;
 import weka.core.Instances;
 import weka.experiment.InstanceQuery;
 
@@ -33,7 +34,7 @@ class Learner {
         classifiers = Collections.unmodifiableMap(map);
     }
 
-    private final static String stringQuery = String.format(
+    private final static String trainingQuery = String.format(
             "SELECT %s.*, %s.%s " +
                     "FROM %s, %s " +
                     "WHERE %s.%s = %s.%s",
@@ -41,13 +42,30 @@ class Learner {
             Storage.TABLE_USER, Storage.TABLE_TWEET,
             Storage.TABLE_USER, Storage.ID, Storage.TABLE_TWEET, Storage.USER_ID);
 
+    private final static String classificationQuery = String.format(
+            "SELECT *, NULL as %s " +
+                    "FROM %s " +
+                    "WHERE %s not in " +
+                    "(" +
+                    "SELECT %s.%s " +
+                    "FROM %s, %s " +
+                    "WHERE %s.%s = %s.%s" +
+                    ")",
+            Storage.COUNTRY,
+            Storage.TABLE_USER,
+            Storage.ID,
+            Storage.TABLE_USER, Storage.ID,
+            Storage.TABLE_USER, Storage.TABLE_TWEET,
+            Storage.TABLE_USER, Storage.ID, Storage.TABLE_TWEET, Storage.USER_ID);
+
     private Instances training_data = null;
+    private Instances classification_data = null;
     private AbstractClassifier classifier = null;
 
     public Learner(String classifier_name) throws Exception {
         super();
 
-        this.loadData();
+        this.loadData(true);
         this.classifierFactory(classifier_name);
     }
 
@@ -59,21 +77,28 @@ class Learner {
         return this.classifier;
     }
 
-    private void loadData() throws Exception {
+    private void loadData(boolean isTraining) throws Exception {
         InstanceQuery query = null;
 
         try {
             query = new InstanceQuery();
             query.setUsername("nobody");
             query.setPassword("");
-            query.setQuery(stringQuery);
 
-            this.training_data = query.retrieveInstances();
-            this.training_data.setClass(this.training_data.attribute(Storage.COUNTRY));
-            this.training_data.randomize(new Random(0));
+            if (isTraining) {
+                query.setQuery(trainingQuery);
+
+                this.training_data = query.retrieveInstances();
+                this.training_data.setClass(this.training_data.attribute(Storage.COUNTRY));
+                this.training_data.randomize(new Random(0));
+            } else {
+                query.setQuery(classificationQuery);
+
+                this.classification_data = query.retrieveInstances();
+                this.classification_data.randomize(new Random(0));
+            }
         } catch (Exception e) {
-            logger.fatal("Error while executing DB query.");
-            logger.debug(e);
+            logger.error("Error while executing DB query", e);
 
             throw e;
         } finally {
@@ -120,6 +145,33 @@ class Learner {
         final Instances test = new Instances(training_data, trainingSize, testingSize);
 
         return new AbstractMap.SimpleEntry<>(train, test);
+    }
+
+    public void buildAndClassify() {
+        try {
+            logger.info("Building classifier {}...",
+                    this.classifier.getClass().getSimpleName());
+            this.classifier.buildClassifier(this.training_data);
+
+            this.loadData(false);
+            logger.info("Classifying unknown instances {}...",
+                    this.classifier.getClass().getSimpleName());
+            for (Instance i : this.classification_data) {
+                i.setDataset(this.training_data);
+
+                try {
+                    double classification = this.classifier.classifyInstance(i);
+
+                    logger.debug("Classification: {}",
+                            this.training_data.classAttribute().value((int) classification)
+                    );
+                } catch (Exception e) {
+                    logger.error("error", e);
+                }
+            }
+        } catch (Exception e) {
+            logger.error("Error while classifying new instances.", e);
+        }
     }
 
     public Evaluation buildAndEvaluate(float evaluation_rate) {
