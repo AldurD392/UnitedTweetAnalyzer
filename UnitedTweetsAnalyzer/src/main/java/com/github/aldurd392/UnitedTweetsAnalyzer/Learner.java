@@ -23,7 +23,6 @@ public class Learner {
     public final static Map<String, Class> classifiers = Collections.unmodifiableMap(
             new HashMap<String, Class>() {
                 {
-                    put("all", null);
                     put("nbayes", NaiveBayesUpdateable.class);
                     put("dtree", J48.class);
                 }
@@ -99,6 +98,7 @@ public class Learner {
         logger.debug("Classifier {} correctly created.", this.classifier.getClass().getSimpleName());
     }
 
+    /*
     public void buildClassifier() throws Exception {
         logger.info("Building classifier {}...", this.classifier.getClass().getSimpleName());
 
@@ -109,6 +109,7 @@ public class Learner {
             throw e;
         }
     }
+    */
 
     private Map.Entry<Instances, Instances> splitTrainingTestData(float percentage_split) {
         assert (percentage_split > 0 && percentage_split < 1);
@@ -122,20 +123,27 @@ public class Learner {
         return new AbstractMap.SimpleEntry<>(train, test);
     }
 
-    public void evaluateClassifier(float evaluation_rate) {
-        logger.info("Evaluating built classifier {} and evaluation rate {}...",
-                this.classifier.getClass().getSimpleName(), evaluation_rate);
-
+    public void buildAndEvaluate(float evaluation_rate) {
         try {
             Evaluation eval;
 
             if (evaluation_rate < 1) {
+                logger.info("Building and evaluating classifier {} with testing percentage {}...",
+                        this.classifier.getClass().getSimpleName(), evaluation_rate);
+
                 Map.Entry<Instances, Instances> data = splitTrainingTestData(evaluation_rate);
+
+                this.classifier.buildClassifier(data.getKey());
+
                 eval = new Evaluation(data.getKey());
                 eval.evaluateModel(this.classifier, data.getValue());
             } else {
                 eval = new Evaluation(this.training_data);
                 int rounded_evaluation_rate = Math.round(evaluation_rate);
+
+                logger.info("Building and evaluating classifier {} with {}-fold validation...",
+                        this.classifier.getClass().getSimpleName(), rounded_evaluation_rate);
+
                 eval.crossValidateModel(
                         this.classifier,
                         this.training_data,
