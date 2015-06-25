@@ -10,11 +10,7 @@ import twitter4j.Status;
 import twitter4j.User;
 
 import java.io.File;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.PreparedStatement;
-import java.sql.SQLException;
-import java.sql.Statement;
+import java.sql.*;
 
 class Storage {
     private final static String JDBC_PREFIX = "jdbc:sqlite:";
@@ -23,10 +19,10 @@ class Storage {
     public final static String ID = "ID";
 
     private final static String USERNAME = "USERNAME";
-    private final static String LANG = "LANG";
-    private final static String LOCATION = "LOCATION";
-    private final static String UTC_OFFSET = "UTC_OFFSET";
-    private final static String TIMEZONE = "TIMEZONE";
+    public final static String LANG = "LANG";
+    public final static String LOCATION = "LOCATION";
+    public final static String UTC_OFFSET = "UTC_OFFSET";
+    public final static String TIMEZONE = "TIMEZONE";
 
     private final static String LAT = "LAT";
     private final static String LON = "LON";
@@ -130,8 +126,14 @@ class Storage {
             stmt.setLong(1, user.getId());
             stmt.setString(2, user.getName());
             stmt.setString(3, user.getLang());
-            stmt.setString(4, user.getLocation());
-            stmt.setInt(5, user.getUtcOffset());
+            stmt.setString(4, user.getLocation().length() > 0 ? user.getLocation() : null);
+
+            if (user.getUtcOffset() == -1) {
+                stmt.setNull(5, Types.INTEGER);
+            } else {
+                stmt.setInt(5, user.getUtcOffset());
+            }
+
             stmt.setString(6, user.getTimeZone());
 
             stmt.executeUpdate();

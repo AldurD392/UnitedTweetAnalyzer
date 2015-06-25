@@ -35,15 +35,19 @@ class Learner {
     }
 
     private final static String trainingQuery = String.format(
-            "SELECT %s.*, %s.%s " +
+            "SELECT %s.%s, %s.%s, %s.%s, %s.%s, %s.%s " +
                     "FROM %s, %s " +
                     "WHERE %s.%s = %s.%s",
-            Storage.TABLE_USER, Storage.TABLE_TWEET, Storage.COUNTRY,
+            Storage.TABLE_USER, Storage.LANG,
+            Storage.TABLE_USER, Storage.LOCATION,
+            Storage.TABLE_USER, Storage.UTC_OFFSET,
+            Storage.TABLE_USER, Storage.TIMEZONE,
+            Storage.TABLE_TWEET, Storage.COUNTRY,
             Storage.TABLE_USER, Storage.TABLE_TWEET,
             Storage.TABLE_USER, Storage.ID, Storage.TABLE_TWEET, Storage.USER_ID);
 
     private final static String classificationQuery = String.format(
-            "SELECT *, NULL as %s " +
+            "SELECT %s.%s, %s.%s, %s.%s, %s.%s, NULL as %s " +
                     "FROM %s " +
                     "WHERE %s not in " +
                     "(" +
@@ -51,6 +55,10 @@ class Learner {
                     "FROM %s, %s " +
                     "WHERE %s.%s = %s.%s" +
                     ")",
+            Storage.TABLE_USER, Storage.LANG,
+            Storage.TABLE_USER, Storage.LOCATION,
+            Storage.TABLE_USER, Storage.UTC_OFFSET,
+            Storage.TABLE_USER, Storage.TIMEZONE,
             Storage.COUNTRY,
             Storage.TABLE_USER,
             Storage.ID,
@@ -93,13 +101,12 @@ class Learner {
                 this.training_data.randomize(new Random(0));
             } else {
                 query.setQuery(classificationQuery);
-
                 this.classification_data = query.retrieveInstances();
+                this.classification_data.setClass(this.classification_data.attribute(Storage.COUNTRY));
                 this.classification_data.randomize(new Random(0));
             }
         } catch (Exception e) {
             logger.error("Error while executing DB query", e);
-
             throw e;
         } finally {
             if (query != null) {
@@ -157,17 +164,10 @@ class Learner {
             logger.info("Classifying unknown instances {}...",
                     this.classifier.getClass().getSimpleName());
             for (Instance i : this.classification_data) {
-                i.setDataset(this.training_data);
-
-                try {
-                    double classification = this.classifier.classifyInstance(i);
-
-                    logger.debug("Classification: {}",
-                            this.training_data.classAttribute().value((int) classification)
-                    );
-                } catch (Exception e) {
-                    logger.error("error", e);
-                }
+                double classification = this.classifier.classifyInstance(i);
+                logger.debug("Classification: {}",
+                        this.training_data.classAttribute().value((int) classification)
+                );
             }
         } catch (Exception e) {
             logger.error("Error while classifying new instances.", e);
