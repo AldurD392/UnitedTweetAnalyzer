@@ -152,10 +152,8 @@ class Storage {
             );
         }
 
-        assert tweet.getGeoLocation() != null || tweet.getPlace() != null;
-
         GeoLocation geoLocation = tweet.getGeoLocation();
-        if (geoLocation == null) {
+        if (geoLocation == null && tweet.getPlace() != null) {
             final int rows = tweet.getPlace().getBoundingBoxCoordinates().length;
             final int columns = tweet.getPlace().getBoundingBoxCoordinates()[rows - 1].length;
 
@@ -163,9 +161,10 @@ class Storage {
             final GeoLocation last = tweet.getPlace().getBoundingBoxCoordinates()[rows - 1][columns - 1];
 
             geoLocation = Geography.midPoint(first, last);
+        } else if (geoLocation == null) {
+            /* The tweet doesn't have an attached location. We don't store it in the DB. */
+            return;
         }
-
-        assert geoLocation != null;
 
         String country = this.geography.query(
                 new Coordinate(geoLocation.getLongitude(), geoLocation.getLatitude())
@@ -218,6 +217,7 @@ class Storage {
     }
 
     public void close() throws SQLException {
+        this.c.commit();
         this.c.close();
     }
 }

@@ -13,7 +13,7 @@ class Streamer {
 		this.storage = storage;
 	}
 
-    public void startListening() {
+    public void startListening(boolean locationBiased) {
         TwitterStream twitterStream = new TwitterStreamFactory().getInstance();
 
         StatusListener listener = new StatusListener() {
@@ -42,8 +42,12 @@ class Streamer {
 
         twitterStream.addListener(listener);
 
-        FilterQuery filterQuery = new FilterQuery();
-        filterQuery.locations(Constants.boundingBox);
-        twitterStream.filter(filterQuery);
+        if (locationBiased) {
+            FilterQuery filterQuery = new FilterQuery();
+            filterQuery.locations(Constants.boundingBox);
+            twitterStream.filter(filterQuery);
+        } else {
+            twitterStream.sample();
+        }
     }
 }

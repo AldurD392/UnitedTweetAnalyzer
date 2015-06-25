@@ -20,6 +20,7 @@ class Main {
 
     private static final String TASK = "t";
     private static final String SHAPEFILE = "s";
+    private static final String STREAM_BIAS = "b";
     private static final String LEARNER_NAME = "l";
     private static final String EVALUATION_RATE = "e";
     private static final String DATABASE_PATH = "d";
@@ -28,6 +29,10 @@ class Main {
     private static final String[] TASK_TYPE = {
             "store",
             "learn"
+    };
+    private static final String[] STREAM_BIAS_TYPE = {
+            "geo",
+            "all"
     };
     private static final String LEARN_ALL = "all";
 
@@ -54,6 +59,15 @@ class Main {
                 .type(String.class)
                 .build();
         options.addOption(shapefile_path);
+
+        Option stream_bias = Option.builder(STREAM_BIAS)
+                .longOpt("stream_bias")
+                .desc("bias applied to the stream " + Arrays.toString(STREAM_BIAS_TYPE))
+                .hasArg(true)
+                .required(false)
+                .type(String.class)
+                .build();
+        options.addOption(stream_bias);
 
         {
             Set<String> classifiers = new HashSet<>(Learner.classifiers.keySet());
@@ -111,7 +125,7 @@ class Main {
             // Parse the command line arguments
             CommandLine commandLine = parser.parse(options, args);
 
-            if (commandLine.hasOption("h")) {
+            if (commandLine.hasOption(HELP)) {
                 HelpFormatter formatter = new HelpFormatter();
                 formatter.printHelp(EXECUTABLE_NAME, options);
 
@@ -135,7 +149,6 @@ class Main {
                 }
 
                 Geography geography = new Geography(shapefile_path);
-
                 final Storage storage = new Storage(geography, database_path);
                 Runtime.getRuntime().addShutdownHook(new Thread() {
                     public void run() {
@@ -149,8 +162,9 @@ class Main {
                         }
                 });
 
+                String streaming_bias = commandLine.getOptionValue(STREAM_BIAS, STREAM_BIAS_TYPE[0]);
                 Streamer streamer = new Streamer(storage);
-                streamer.startListening();
+                streamer.startListening(streaming_bias.equals(STREAM_BIAS_TYPE[0]));
             } else if (TASK_TYPE[1].equals(value)) {
                 String classifier_name = commandLine.getOptionValue(LEARNER_NAME);
                 if (classifier_name == null) {
