@@ -3,15 +3,12 @@ package com.github.aldurd392.UnitedTweetsAnalyzer;
 
 import org.apache.commons.cli.*;
 
-import weka.core.Instance;
-
-import java.io.IOException;
-import java.sql.PreparedStatement;
-
 
 public class Main {
     private static final String EXECUTABLE_NAME = "UnitedTweetsAnalyzer";
+
     private static final String DEFAULT_DATABASE_PATH = "users.db";
+    private static final String DEFAULT_EVALUATION_RATE = "0.3";
 
     private static Options createOptions() {
         // Create the Options
@@ -34,6 +31,27 @@ public class Main {
                 .type(String.class)
                 .build();
         options.addOption(shapefile_path);
+
+        Option learner_name = Option.builder("l")
+                .longOpt("learner_name")
+                .desc("name of the classifier " + Learner.classifiers.keySet().toString())
+                .hasArg(true)
+                .required(false)
+                .type(String.class)
+                .build();
+        options.addOption(learner_name);
+
+        Option evaluation_rate = Option.builder("e")
+                .longOpt("evaluation rate")
+                .desc("specify the evaluation rate; " +
+                                "0 < values < 1 will let the evaluator use a percentage of the training data as tests; " +
+                                "values > 1 will let the evaluator use value-fold cross validation"
+                )
+                .hasArg(true)
+                .required(false)
+                .type(Float.class)
+                .build();
+        options.addOption(evaluation_rate);
 
         Option database_path = Option.builder("d")
                 .longOpt("database")
@@ -94,12 +112,29 @@ public class Main {
                 Streamer streamer = new Streamer(storage);
                 streamer.startListening();
             } else if ("learn".equals(value)) {
-            		
-            		TrainingData t = new TrainingData();
-            		t.loadTrainingData();
-            		NaiveBayes nb = new NaiveBayes(t);
-            		nb.classify();
-            		
+                String classifier_name = commandLine.getOptionValue("l");
+                if (classifier_name == null) {
+                    throw new ParseException("-t \"learn\" requires a classifier name (-l)");
+                } else if (!Learner.classifiers.containsKey(classifier_name)) {
+                    throw new ParseException("Invalid classifier name " + classifier_name);
+                }
+
+                String evaluation_rate_string = commandLine.getOptionValue("e", DEFAULT_EVALUATION_RATE);
+                ParseException bad_evaluation_rate = new ParseException("Invalid evaluation value " + evaluation_rate_string);
+
+                float evaluation_rate;
+                try {
+                    evaluation_rate = Float.parseFloat(evaluation_rate_string);
+                    if (evaluation_rate <= 0 || (evaluation_rate >= 1 && evaluation_rate < 2)) {
+                        throw bad_evaluation_rate;
+                    }
+                } catch (NumberFormatException e) {
+                    throw bad_evaluation_rate;
+                }
+
+                Learner learner = new Learner(classifier_name);
+                learner.buildClassifier();
+                learner.evaluateClassifier(evaluation_rate);
             } else {
                 throw new ParseException(value + "is not a valid value for -t");
             }
