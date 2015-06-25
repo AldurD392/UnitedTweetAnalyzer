@@ -46,6 +46,14 @@ public class Learner {
         this.loadData();
         this.classifierFactory(classifier_name);
     }
+    
+    public Instances getTrainingData(){
+    		return this.training_data;
+    }
+    
+    public AbstractClassifier getClassifier(){
+    		return this.classifier; 
+    }
 
     public void loadData() throws Exception {
         InstanceQuery query = null;
@@ -123,10 +131,12 @@ public class Learner {
         return new AbstractMap.SimpleEntry<>(train, test);
     }
 
-    public void buildAndEvaluate(float evaluation_rate) {
-        try {
-            Evaluation eval;
-
+    public Evaluation buildAndEvaluate(float evaluation_rate) {
+        
+        Evaluation eval = null;
+    	
+    		try {
+    			
             if (evaluation_rate < 1) {
                 logger.info("Building and evaluating classifier {} with testing percentage {}...",
                         this.classifier.getClass().getSimpleName(), evaluation_rate);
@@ -152,10 +162,10 @@ public class Learner {
                 );
             }
 
-            System.out.println(eval.toSummaryString("\nResults\n======\n", false));
         } catch (Exception e) {
             logger.error("Error while evaluating the classifier");
             logger.debug(e);
         }
+    		return eval;
     }
 }

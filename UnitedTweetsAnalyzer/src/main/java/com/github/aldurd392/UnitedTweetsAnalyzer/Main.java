@@ -2,6 +2,10 @@
 package com.github.aldurd392.UnitedTweetsAnalyzer;
 
 import org.apache.commons.cli.*;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import weka.classifiers.Evaluation;
 
 import java.util.Arrays;
 import java.util.HashSet;
@@ -26,6 +30,8 @@ public class Main {
             "learn"
     };
     private static final String LEARN_ALL = "all";
+    
+    private static final Logger logger = LogManager.getLogger(Main.class.getSimpleName());
 
     private static Options createOptions() {
         // Create the Options
@@ -155,12 +161,36 @@ public class Main {
                     throw bad_evaluation_rate;
                 }
 
+                Evaluation eval = null;
+                
                 if (classifier_name.equals(LEARN_ALL)) {
+                	
+                		Evaluation bestEval = null;
+                		Learner bestLearner = null;
+
                     for (String classifier : Learner.classifiers.keySet()) {
-                        new Learner(classifier).buildAndEvaluate(evaluation_rate);
+                    		Learner learner = new Learner(classifier);
+                    		eval = learner.buildAndEvaluate(evaluation_rate);
+                    		
+                    		logger.info(eval.toSummaryString("Results\n", true));
+                    		
+                    		int classIndex = learner.getTrainingData().classIndex();
+                    		
+                    		// Keep the best learner.
+                    		if (bestEval == null || eval.precision(classIndex) > bestEval.precision(classIndex) ){
+                    			bestEval = eval;
+                    			bestLearner = learner;
+                    		}
                     }
+                    
+                    // Print the best learner stats.
+                    System.out.println(bestEval.toSummaryString("\n=====\nBest Classifier: " + bestLearner.getClassifier().getClass().getSimpleName() + "\n=====\n", true));
+
                 } else {
-                    new Learner(classifier_name).buildAndEvaluate(evaluation_rate);
+            			Learner learner = new Learner(classifier_name);
+                    eval = learner.buildAndEvaluate(evaluation_rate);
+                    logger.info(eval.toSummaryString("Results\n", true));
+
                 }
             } else {
                 throw new ParseException(value + "is not a valid value for -" + TASK);
