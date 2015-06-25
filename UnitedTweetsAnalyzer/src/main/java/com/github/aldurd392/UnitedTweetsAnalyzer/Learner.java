@@ -5,6 +5,7 @@ import org.apache.logging.log4j.Logger;
 import weka.classifiers.AbstractClassifier;
 import weka.classifiers.Evaluation;
 import weka.classifiers.bayes.NaiveBayesUpdateable;
+import weka.classifiers.functions.LibSVM;
 import weka.classifiers.trees.J48;
 import weka.core.Instances;
 import weka.experiment.InstanceQuery;
@@ -26,6 +27,9 @@ class Learner {
         HashMap<String, Class<? extends AbstractClassifier>> map = new HashMap<>();
         map.put("nbayes", NaiveBayesUpdateable.class);
         map.put("dtree", J48.class);
+        map.put("libsvm", LibSVM.class);
+//        map.put("smo", SMO.class);
+//        map.put("random_forest", RandomForest.class);
         classifiers = Collections.unmodifiableMap(map);
     }
 
