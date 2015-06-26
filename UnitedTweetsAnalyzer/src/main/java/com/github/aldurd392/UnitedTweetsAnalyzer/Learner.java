@@ -2,14 +2,18 @@ package com.github.aldurd392.UnitedTweetsAnalyzer;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
 import weka.classifiers.AbstractClassifier;
 import weka.classifiers.Evaluation;
 import weka.classifiers.bayes.NaiveBayesUpdateable;
 import weka.classifiers.functions.LibSVM;
+import weka.classifiers.meta.FilteredClassifier;
 import weka.classifiers.trees.J48;
+import weka.core.Attribute;
 import weka.core.Instance;
 import weka.core.Instances;
 import weka.experiment.InstanceQuery;
+import weka.filters.unsupervised.attribute.Remove;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
@@ -35,9 +39,10 @@ class Learner {
     }
 
     private final static String trainingQuery = String.format(
-            "SELECT %s.%s, %s.%s, %s.%s, %s.%s, %s.%s " +
+            "SELECT %s.%s, %s.%s, %s.%s, %s.%s, %s.%s, %s.%s " +
                     "FROM %s, %s " +
                     "WHERE %s.%s = %s.%s",
+            Storage.TABLE_USER, Storage.ID,
             Storage.TABLE_USER, Storage.LANG,
             Storage.TABLE_USER, Storage.LOCATION,
             Storage.TABLE_USER, Storage.UTC_OFFSET,
@@ -47,7 +52,7 @@ class Learner {
             Storage.TABLE_USER, Storage.ID, Storage.TABLE_TWEET, Storage.USER_ID);
 
     private final static String classificationQuery = String.format(
-            "SELECT %s.%s, %s.%s, %s.%s, %s.%s, NULL as %s " +
+            "SELECT %s.%s ,%s.%s, %s.%s, %s.%s, %s.%s, NULL as %s " +
                     "FROM %s " +
                     "WHERE %s not in " +
                     "(" +
@@ -55,6 +60,7 @@ class Learner {
                     "FROM %s, %s " +
                     "WHERE %s.%s = %s.%s" +
                     ")",
+            Storage.TABLE_USER, Storage.ID,
             Storage.TABLE_USER, Storage.LANG,
             Storage.TABLE_USER, Storage.LOCATION,
             Storage.TABLE_USER, Storage.UTC_OFFSET,
@@ -68,7 +74,7 @@ class Learner {
 
     private Instances training_data = null;
     private Instances classification_data = null;
-    private AbstractClassifier classifier = null;
+    private FilteredClassifier classifier = null;
 
     public Learner(String classifier_name) throws Exception {
         super();
@@ -81,7 +87,7 @@ class Learner {
         return this.training_data;
     }
 
-    public AbstractClassifier getClassifier() {
+    public FilteredClassifier getClassifier() {
         return this.classifier;
     }
 
@@ -105,6 +111,7 @@ class Learner {
                 this.classification_data.setClass(this.classification_data.attribute(Storage.COUNTRY));
                 this.classification_data.randomize(new Random(0));
             }
+            
         } catch (Exception e) {
             logger.error("Error while executing DB query", e);
             throw e;
@@ -127,9 +134,20 @@ class Learner {
         try {
             Constructor<?> constructor = classifier_class.getConstructor();
             Object object = constructor.newInstance();
-
+            
             assert (object instanceof AbstractClassifier);
-            this.classifier = (AbstractClassifier) object;
+
+            Remove rm = new Remove();
+    		
+    			Attribute idAttr = this.training_data.attribute(
+            		this.training_data.attribute(Storage.ID).index()
+            	);
+    			rm.setAttributeIndices("" + (idAttr.index() + 1));
+    		
+    			this.classifier = new FilteredClassifier();
+    			this.classifier.setFilter(rm);
+    			this.classifier.setClassifier((AbstractClassifier) object);
+
         } catch (NoSuchMethodException |
                 InvocationTargetException |
                 InstantiationException |
@@ -139,7 +157,7 @@ class Learner {
             throw e;
         }
 
-        logger.debug("Classifier {} correctly created.", this.classifier.getClass().getSimpleName());
+        logger.debug("Classifier {} correctly created.", this.classifier.getClassifier().getClass().getSimpleName());
     }
 
     private Map.Entry<Instances, Instances> splitTrainingTestData(float percentage_split) {
@@ -156,16 +174,20 @@ class Learner {
 
     public void buildAndClassify() {
         try {
+        	
             logger.info("Building classifier {}...",
-                    this.classifier.getClass().getSimpleName());
+            		this.classifier.getClassifier().getClass().getSimpleName());
             this.classifier.buildClassifier(this.training_data);
 
             this.loadData(false);
-            logger.info("Classifying unknown instances {}...",
-                    this.classifier.getClass().getSimpleName());
+
             for (Instance i : this.classification_data) {
+            		
                 double classification = this.classifier.classifyInstance(i);
-                logger.debug("Classification: {}",
+
+//                logger.debug(i.toString());
+                logger.debug("Classification: id: {}, class: {}",
+                			(int) i.value(this.training_data.attribute(Storage.ID).index()),
                         this.training_data.classAttribute().value((int) classification)
                 );
             }
@@ -180,7 +202,7 @@ class Learner {
         try {
             if (evaluation_rate < 1) {
                 logger.info("Building and evaluating classifier {} with testing percentage {}...",
-                        this.classifier.getClass().getSimpleName(), evaluation_rate);
+                		this.classifier.getClassifier().getClass().getSimpleName(), evaluation_rate);
 
                 Map.Entry<Instances, Instances> data = splitTrainingTestData(evaluation_rate);
 
@@ -193,7 +215,8 @@ class Learner {
                 int rounded_evaluation_rate = Math.round(evaluation_rate);
 
                 logger.info("Building and evaluating classifier {} with {}-fold validation...",
-                        this.classifier.getClass().getSimpleName(), rounded_evaluation_rate);
+                        this.classifier.getClassifier().getClass().getSimpleName(), 
+                        rounded_evaluation_rate);
 
                 eval.crossValidateModel(
                         this.classifier,
