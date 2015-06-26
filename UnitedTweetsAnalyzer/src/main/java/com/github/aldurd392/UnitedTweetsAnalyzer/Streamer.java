@@ -1,5 +1,6 @@
 package com.github.aldurd392.UnitedTweetsAnalyzer;
 
+import org.apache.logging.log4j.LogManager;
 import twitter4j.*;
 
 /**
@@ -7,12 +8,20 @@ import twitter4j.*;
  * Created by aldur on 02/06/15.
  */
 class Streamer {
+    private final static org.apache.logging.log4j.Logger logger = LogManager.getLogger(Streamer.class.getSimpleName());
+
 	private final Storage storage;
 
 	public Streamer(Storage storage){
 		this.storage = storage;
 	}
 
+    /**
+     * Start listening to the stream and storing into the storage.
+     * @param locationBiased parameter indicating if the stream
+     *                       has to be filtered according to the USA
+     *                       bounding box or has to be a random 1% sample.
+     */
     public void startListening(boolean locationBiased) {
         TwitterStream twitterStream = new TwitterStreamFactory().getInstance();
 
@@ -22,6 +31,15 @@ class Streamer {
                 storage.insertTweet(status);
             }
 
+            @Override
+            public void onException(Exception e) {
+                logger.error("Error on stream", e);
+            }
+
+            /*
+             * According to Twitter API we'd need to implement those methods too.
+             * This is an academic project, so we'd be fine here.
+             */
             @Override
             public void onDeletionNotice(StatusDeletionNotice statusDeletionNotice) { }
 
@@ -33,11 +51,6 @@ class Streamer {
 
             @Override
             public void onStallWarning(StallWarning warning) { }
-
-            @Override
-            public void onException(Exception ex) {
-                ex.printStackTrace();
-            }
         };
 
         twitterStream.addListener(listener);

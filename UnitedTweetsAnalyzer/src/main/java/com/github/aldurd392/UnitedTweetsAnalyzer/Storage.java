@@ -5,6 +5,7 @@ import com.vividsolutions.jts.geom.Coordinate;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import org.sqlite.SQLiteErrorCode;
 import twitter4j.GeoLocation;
 import twitter4j.Status;
 import twitter4j.User;
@@ -43,8 +44,16 @@ class Storage {
         this.connect(database_path);
     }
 
-    private void connect(String dp_path) {
-        boolean exist = this.checkDataBase(dp_path);
+    /**
+     * Connect the Storage to the SQLite DB.
+     * @param dbPath the path to the DB.
+     */
+    private void connect(String dbPath) {
+        /**
+         * The connection creates the DB.
+         * Before connecting check for existence.
+         */
+        boolean exists = this.checkDataBase(dbPath);
 
         try {
             /*
@@ -52,23 +61,46 @@ class Storage {
              * in order to execute static blocks only once.
              */
             Class.forName(JDBC_DRIVER);
-            this.c = DriverManager.getConnection(JDBC_PREFIX + dp_path);
+            this.c = DriverManager.getConnection(JDBC_PREFIX + dbPath);
 
             logger.debug("Database successfully opened.");
-            if (!exist) {
+            if (!exists) {
                 this.initDatabase();
             }
         } catch (SQLException | ClassNotFoundException e) {
-            logger.error("Error while creating tables.");
-            logger.debug(e);
+            logger.fatal("Error while connecting to / initializing the database.", e);
             System.exit(1);
         }
     }
 
+    /**
+     * Check if the DB (or any file) exists at db_path.
+     * @param db_path the path of the DB.
+     * @return true is a file exists.
+     */
     private boolean checkDataBase(String db_path) {
         return new File(db_path).exists();
     }
 
+    /**
+     * Create tables in the DB.
+     * We'll create two different tables, respectively containing Users and Tweets.
+     *
+     * The User's table contains (LOC):
+     * - ID (PK) (We won't use it while learning)
+     * - Username (We won't use it while learning)
+     * - Lang
+     * - Location
+     * - UTC Offset
+     * - Timezone
+     *
+     * The Tweet's table contains:
+     * - ID (PK)
+     * - LAT / LON
+     * - ID of the user (FK)
+     * - Country
+     * @throws SQLException on table creation error.
+     */
     private void initDatabase() throws SQLException {
         try (Statement stmt = this.c.createStatement()) {
             String userTable = "CREATE TABLE " + TABLE_USER +
@@ -95,28 +127,41 @@ class Storage {
         }
     }
 
+    /**
+     * Insert a user in the Storage.
+     * Skip already existing users (no update).
+     * @param user the user to be inserted.
+     * @throws SQLException on user insert error.
+     */
     private void insertUser(User user) throws SQLException {
         if (user == null) {
             logger.error("Trying to add NULL user to the DB.");
             return;
         }
 
-        String select = String.format("SELECT %s FROM %s WHERE %s = ?;",
-                ID, TABLE_USER, ID);
+        /**
+         * If the user already exists in the DB, we have nothing to do here.
+         * Please note that, as a performance optimization,
+         * we could skip this step and catch an eventual SQL exception regarding the user's PK.
+         */
+        /* Disabled due to performance optimization, we check the error code below.
+        String select = String.format(
+                "SELECT %s FROM %s WHERE %s = ?;",
+                ID, TABLE_USER, ID
+        );
+
         try (PreparedStatement stmt = this.c.prepareStatement(select)) {
             stmt.setLong(1, user.getId());
 
             if (stmt.executeQuery().next()) {
-                /* The user already exists in our DB */
                 logger.debug("User {} - {} already exists in DB.", user.getId(), user.getName());
                 return;
             }
         } catch (SQLException e) {
-            logger.error("Error while selecting user {}", user.getId());
-            logger.debug(e);
-
+            logger.error("Error while selecting user {}", user.getId(), e);
             throw e;
         }
+        */
 
         String insert = "INSERT INTO " + TABLE_USER +
                 String.format(" (%s, %s, %s, %s, %s, %s) ",
@@ -138,22 +183,44 @@ class Storage {
 
             stmt.executeUpdate();
         } catch (SQLException e) {
-            logger.error("Error while inserting user {} {}", user.getId(), user.getName());
-            logger.debug(e);
-
-            throw e;
+            /*
+             * Having a constraint error is likely to indicate
+             * that the user already exists in the DB,
+             * and we're violating the constraint on the PK ID.
+             */
+            if (e.getErrorCode() == SQLiteErrorCode.SQLITE_CONSTRAINT.code) {
+                logger.debug("User {} - {} already exists in DB.", user.getId(), user.getName());
+            } else {
+                logger.error("Error while inserting user {} {}", user.getId(), user.getName(), e);
+                throw e;
+            }
         }
     }
 
+    /**
+     * Insert a Tweet in the DB, after trying to localizing it in our geography.
+     * Store the User who tweeted too.
+     * @param tweet the Twitter status containing the Tweet and the User's detail.
+     */
     public void insertTweet(Status tweet) {
         try {
             this.insertUser(tweet.getUser());
         } catch (SQLException e) {
-            logger.warn("Skipping tweet {}, error while inserting user {}.",
+            logger.warn("Skipping tweet {} because of error while inserting user {}.",
                     tweet.getId(), tweet.getUser().getId()
             );
         }
 
+        /**
+         * The status could contain various geolocation information.
+         * We honour at first the GPS coordinates.
+         * Then the Place details.
+         * In case of place we are given a bounding box of points and
+         * we'll use the centroid of the constructed polygon while
+         * assigning a country to the Tweet.
+         *
+         * We won't store in the DB Tweets that do not ship any location info.
+         */
         GeoLocation geoLocation = tweet.getGeoLocation();
         if (geoLocation == null && tweet.getPlace() != null) {
             final int rows = tweet.getPlace().getBoundingBoxCoordinates().length;
@@ -164,7 +231,6 @@ class Storage {
 
             geoLocation = Geography.midPoint(first, last);
         } else if (geoLocation == null) {
-            /* The tweet doesn't have an attached location. We don't store it in the DB. */
             return;
         }
 
@@ -179,15 +245,20 @@ class Storage {
             return;
         }
 
-        logger.debug("Tweet {}: {}", tweet.getId(), country);  // DEBUG
+        logger.debug("Tweet {}: {}", tweet.getId(), country);
 
+        /**
+         * If the Tweet already exists in the DB, we have nothing to do here.
+         * Please note that, as a performance optimization,
+         * we could skip this step and catch an eventual SQL exception regarding the Tweet's PK.
+         */
+        /* Disabled due to performance optimization, we check the error code below.
         String select = String.format("SELECT %s FROM %s WHERE %s = ?;",
                 ID, TABLE_TWEET, ID);
         try (PreparedStatement stmt = this.c.prepareStatement(select)) {
             stmt.setLong(1, tweet.getId());
 
             if (stmt.executeQuery().next()) {
-                    /* The tweet already exists in our DB */
                 logger.debug("Tweet {} already exists in DB.", tweet.getId());
                 return;
             }
@@ -197,7 +268,7 @@ class Storage {
 
             return;
         }
-
+        */
 
         String insert = "INSERT INTO " + TABLE_TWEET +
                 String.format(
@@ -213,11 +284,23 @@ class Storage {
 
             stmt.executeUpdate();
         } catch (SQLException e) {
-            logger.error("Error while inserting tweet {}", tweet.getId());
-            logger.debug(e);
+            /*
+             * Having a constraint error is likely to indicate
+             * that the Tweet already exists in the DB,
+             * and we're violating the constraint on the PK ID.
+             */
+            if (e.getErrorCode() == SQLiteErrorCode.SQLITE_CONSTRAINT.code) {
+                logger.debug("Tweet {} already exists in DB.", tweet.getId());
+            } else {
+                logger.error("Error while inserting tweet {}", tweet.getId(), e);
+            }
         }
     }
 
+    /**
+     * Close the Storage.
+     * @throws SQLException on close error.
+     */
     public void close() throws SQLException {
         this.c.commit();
         this.c.close();

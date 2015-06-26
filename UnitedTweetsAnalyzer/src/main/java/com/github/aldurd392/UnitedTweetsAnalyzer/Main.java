@@ -13,6 +13,8 @@ import java.util.Set;
 
 
 class Main {
+    private static final Logger logger = LogManager.getLogger(Main.class.getSimpleName());
+
     private static final String EXECUTABLE_NAME = "UnitedTweetsAnalyzer";
 
     private static final String DEFAULT_DATABASE_PATH = "users.db";
@@ -23,24 +25,58 @@ class Main {
     private static final String STREAM_BIAS = "b";
     private static final String LEARNER_NAME = "l";
     private static final String EVALUATION_RATE = "e";
-    private static final String DATABASE_PATH = "d";
     private static final String HELP = "h";
 
+    /**
+     * We have three different tasks:
+     * - Store reads the stream and save the statuses in our DB.
+     * - Learn builds and evaluates a classifier
+     *      against the stored training data.
+     * - Classify launches an unsupervised machine learning task
+     *      against the unlabeled data we have stored.
+     */
     private static final String[] TASK_TYPE = {
             "store",
             "learn",
             "classify"
     };
+
+    /**
+     * While storing we can bias the stream.
+     * Geo will filter tweets according to a specific bounding box.
+     * All will sample the total stream.
+     */
     private static final String[] STREAM_BIAS_TYPE = {
             "geo",
             "all"
     };
+
+    /**
+     * When specifying all as the learner name,
+     * we'll launch each different learner and
+     * we'll return the best.
+     */
     private static final String LEARN_ALL = "all";
 
-    private static final Logger logger = LogManager.getLogger(Main.class.getSimpleName());
-
+    /**
+     * Build the option parse.
+     *
+     * Some examples of command we accept.
+     * To store the location biased stream results:
+     *      $JAR -t store -s shp/tl_2014_us_state.shp [-b geo]
+     * To bias the stream:
+     *      $JAR -t store -s shp/tl_2014_us_state.shp -b all
+     *
+     * To build a Naive Bayes classifier against the training data:
+     *      $JAR -t learn -l nbayes [-e 0.3]
+     * To build a Naive Bayes classifier and use 10-fold validation:
+     *      $JAR -t learn -l nbayes -e 10
+     *
+     * To classify unlabeled instances:
+     *      $JAR -t classify -l nbayes
+     * @return The Options we accept.
+     */
     private static Options createOptions() {
-        // Create the Options
         Options options = new Options();
 
         Option task = Option.builder(TASK)
@@ -96,15 +132,6 @@ class Main {
                 .build();
         options.addOption(evaluation_rate);
 
-        Option database_path = Option.builder(DATABASE_PATH)
-                .longOpt("database")
-                .desc("database path")
-                .hasArg(true)
-                .required(false)
-                .type(String.class)
-                .build();
-        options.addOption(database_path);
-
         Option help = Option.builder(HELP)
                 .longOpt("help")
                 .desc("print this help")
@@ -138,9 +165,12 @@ class Main {
                 throw new ParseException("missing required option -" + TASK);
             }
 
-            String database_path = commandLine.getOptionValue(DATABASE_PATH, DEFAULT_DATABASE_PATH);
-
             String value = commandLine.getOptionValue(TASK);
+
+            /**
+             * In case of a "store" task we need the shapefile.
+             * Optionally, you can specify the stream bias.
+             */
             if (TASK_TYPE[0].equals(value)) {
                 String shapefile_path = commandLine.getOptionValue(SHAPEFILE);
                 if (shapefile_path == null) {
@@ -150,7 +180,9 @@ class Main {
                 }
 
                 Geography geography = new Geography(shapefile_path);
-                final Storage storage = new Storage(geography, database_path);
+                final Storage storage = new Storage(geography, DEFAULT_DATABASE_PATH);
+
+                // While shutting down we'll close the storage.
                 Runtime.getRuntime().addShutdownHook(new Thread() {
                     public void run() {
                             try {
@@ -166,7 +198,13 @@ class Main {
                 String streaming_bias = commandLine.getOptionValue(STREAM_BIAS, STREAM_BIAS_TYPE[0]);
                 Streamer streamer = new Streamer(storage);
                 streamer.startListening(streaming_bias.equals(STREAM_BIAS_TYPE[0]));
-            } else if (TASK_TYPE[1].equals(value) || TASK_TYPE[2].equals(value)) {
+            }
+            /**
+             * In case of a "learn" or "classify" task we need the classifier name.
+             * In case of "learn" you can specify "all" as classifier name
+             * and an optional evaluation rate.
+             */
+            else if (TASK_TYPE[1].equals(value) || TASK_TYPE[2].equals(value)) {
                 String classifier_name = commandLine.getOptionValue(LEARNER_NAME);
                 if (classifier_name == null) {
                     throw new ParseException(

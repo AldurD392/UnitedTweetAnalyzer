@@ -26,6 +26,12 @@ import java.util.*;
 class Learner {
     private final static Logger logger = LogManager.getLogger(Learner.class.getSimpleName());
 
+    /**
+     * This map will let you add other classifiers to this class.
+     * You can specify all those classifiers that inherit from AbstractClassifier
+     *
+     * @see AbstractClassifier
+     */
     public final static Map<String, Class<? extends AbstractClassifier>> classifiers;
 
     static {
@@ -38,6 +44,11 @@ class Learner {
         classifiers = Collections.unmodifiableMap(map);
     }
 
+    /**
+     * Load from the DB all the labeled instances.
+     * i.e. users who have at least a tweet labeled
+     * with an associated country.
+     */
     private final static String trainingQuery = String.format(
             "SELECT %s.%s, %s.%s, %s.%s, %s.%s, %s.%s, %s.%s " +
                     "FROM %s, %s " +
@@ -51,6 +62,14 @@ class Learner {
             Storage.TABLE_USER, Storage.TABLE_TWEET,
             Storage.TABLE_USER, Storage.ID, Storage.TABLE_TWEET, Storage.USER_ID);
 
+    /**
+     * Load from the DB all the unlabeled instances.
+     * Those instances will be used for the unsupervised
+     * machine learning task.
+     * <p/>
+     * Please note that the format retrieved by this query
+     * must be equal to the one retrieved by trainingQuery.
+     */
     private final static String classificationQuery = String.format(
             "SELECT %s.%s ,%s.%s, %s.%s, %s.%s, %s.%s, NULL as %s " +
                     "FROM %s " +
@@ -76,6 +95,12 @@ class Learner {
     private Instances classification_data = null;
     private FilteredClassifier classifier = null;
 
+    /**
+     * Build a new learner
+     *
+     * @param classifier_name the name of the classifier used by the learner.
+     * @throws Exception on error.
+     */
     public Learner(String classifier_name) throws Exception {
         super();
 
@@ -91,6 +116,14 @@ class Learner {
         return this.classifier;
     }
 
+    /**
+     * Load data from the DB and store them in instance variables.
+     * Note that always randomize the order of the retrieved instances.
+     *
+     * @param isTraining if set means that we have to load training instances.
+     *                   Otherwise, we're classifying new instances.
+     * @throws Exception on error.
+     */
     private void loadData(boolean isTraining) throws Exception {
         InstanceQuery query = null;
 
@@ -99,19 +132,19 @@ class Learner {
             query.setUsername("nobody");
             query.setPassword("");
 
+            Instances instances;
             if (isTraining) {
                 query.setQuery(trainingQuery);
-
                 this.training_data = query.retrieveInstances();
-                this.training_data.setClass(this.training_data.attribute(Storage.COUNTRY));
-                this.training_data.randomize(new Random(0));
+                instances = this.training_data;
             } else {
                 query.setQuery(classificationQuery);
                 this.classification_data = query.retrieveInstances();
-                this.classification_data.setClass(this.classification_data.attribute(Storage.COUNTRY));
-                this.classification_data.randomize(new Random(0));
+                instances = this.classification_data;
             }
-            
+
+            instances.setClass(instances.attribute(Storage.COUNTRY));
+            instances.randomize(new Random());
         } catch (Exception e) {
             logger.error("Error while executing DB query", e);
             throw e;
@@ -123,7 +156,7 @@ class Learner {
     }
 
     private void classifierFactory(String classifier_name) throws Exception {
-        Class<?> classifier_class = Learner.classifiers.get(classifier_name);
+        Class<? extends AbstractClassifier> classifier_class = Learner.classifiers.get(classifier_name);
 
         if (classifier_class == null) {
             final String error = "Unknown classifier name " + classifier_name;
@@ -132,28 +165,25 @@ class Learner {
         }
 
         try {
-            Constructor<?> constructor = classifier_class.getConstructor();
-            Object object = constructor.newInstance();
-            
-            assert (object instanceof AbstractClassifier);
+            Constructor<? extends AbstractClassifier> constructor = classifier_class.getConstructor();
+            AbstractClassifier abstractClassifier = constructor.newInstance();
 
-            Remove rm = new Remove();
-    		
-    			Attribute idAttr = this.training_data.attribute(
-            		this.training_data.attribute(Storage.ID).index()
-            	);
-    			rm.setAttributeIndices("" + (idAttr.index() + 1));
-    		
-    			this.classifier = new FilteredClassifier();
-    			this.classifier.setFilter(rm);
-    			this.classifier.setClassifier((AbstractClassifier) object);
+            Remove remove = new Remove();
+            Attribute idAttr = this.training_data.attribute(
+                    this.training_data.attribute(Storage.ID).index()
+            );
+            remove.setAttributeIndices(
+                    String.format("%d", idAttr.index() + 1)
+            );
 
+            this.classifier = new FilteredClassifier();
+            this.classifier.setFilter(remove);
+            this.classifier.setClassifier(abstractClassifier);
         } catch (NoSuchMethodException |
                 InvocationTargetException |
                 InstantiationException |
                 IllegalAccessException e) {
-            logger.error("Error while instantiating classifier {}", classifier_class.getSimpleName());
-            logger.debug(e);
+            logger.error("Error while instantiating classifier {}", classifier_class.getSimpleName(), e);
             throw e;
         }
 
@@ -172,22 +202,25 @@ class Learner {
         return new AbstractMap.SimpleEntry<>(train, test);
     }
 
+    /**
+     * Classify unseen instances.
+     * It builds the classifier against the training set
+     * and then assign a classification to each unlabeled instance.
+     */
     public void buildAndClassify() {
         try {
-        	
+
             logger.info("Building classifier {}...",
-            		this.classifier.getClassifier().getClass().getSimpleName());
+                    this.classifier.getClassifier().getClass().getSimpleName());
             this.classifier.buildClassifier(this.training_data);
 
             this.loadData(false);
 
             for (Instance i : this.classification_data) {
-            		
                 double classification = this.classifier.classifyInstance(i);
 
-//                logger.debug(i.toString());
                 logger.debug("Classification: id: {}, class: {}",
-                			(int) i.value(this.training_data.attribute(Storage.ID).index()),
+                        (int) i.value(this.training_data.attribute(Storage.ID).index()),
                         this.training_data.classAttribute().value((int) classification)
                 );
             }
@@ -196,13 +229,24 @@ class Learner {
         }
     }
 
+    /**
+     * Build the classifier against the training data and evaluate it.
+     *
+     * @param evaluation_rate parameter specifying the evaluation type.
+     *                        If 0 &lt; evaluation_rate &lt; 1,
+     *                        we'll use evaluation_rate percentage of the
+     *                        dataset as test.
+     *                        Otherwise, we'll use evaluation_rate-fold-validation.
+     * @return the evaluation of the classifier.
+     */
     public Evaluation buildAndEvaluate(float evaluation_rate) {
-        Evaluation eval = null;
+        assert evaluation_rate > 0;
 
+        Evaluation eval = null;
         try {
             if (evaluation_rate < 1) {
                 logger.info("Building and evaluating classifier {} with testing percentage {}...",
-                		this.classifier.getClassifier().getClass().getSimpleName(), evaluation_rate);
+                        this.classifier.getClassifier().getClass().getSimpleName(), evaluation_rate);
 
                 Map.Entry<Instances, Instances> data = splitTrainingTestData(evaluation_rate);
 
@@ -215,7 +259,7 @@ class Learner {
                 int rounded_evaluation_rate = Math.round(evaluation_rate);
 
                 logger.info("Building and evaluating classifier {} with {}-fold validation...",
-                        this.classifier.getClassifier().getClass().getSimpleName(), 
+                        this.classifier.getClassifier().getClass().getSimpleName(),
                         rounded_evaluation_rate);
 
                 eval.crossValidateModel(
@@ -226,8 +270,7 @@ class Learner {
                 );
             }
         } catch (Exception e) {
-            logger.error("Error while evaluating the classifier");
-            logger.debug(e);
+            logger.error("Error while evaluating the classifier", e);
         }
 
         return eval;
