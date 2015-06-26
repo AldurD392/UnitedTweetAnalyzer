@@ -36,6 +36,16 @@ class Streamer {
                 logger.error("Error on stream", e);
             }
 
+            @Override
+            public void onStallWarning(StallWarning warning) {
+                logger.warn("Got stall warning: {}", warning);
+            }
+
+            @Override
+            public void onTrackLimitationNotice(int numberOfLimitedStatuses) {
+                logger.warn("Got track limitation notice {}", numberOfLimitedStatuses);
+            }
+
             /*
              * According to Twitter API we'd need to implement those methods too.
              * This is an academic project, so we'd be fine here.
@@ -44,13 +54,7 @@ class Streamer {
             public void onDeletionNotice(StatusDeletionNotice statusDeletionNotice) { }
 
             @Override
-            public void onTrackLimitationNotice(int numberOfLimitedStatuses) { }
-
-            @Override
             public void onScrubGeo(long userId, long upToStatusId) { }
-
-            @Override
-            public void onStallWarning(StallWarning warning) { }
         };
 
         twitterStream.addListener(listener);

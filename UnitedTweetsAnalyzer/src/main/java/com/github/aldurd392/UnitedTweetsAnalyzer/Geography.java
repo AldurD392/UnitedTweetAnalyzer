@@ -27,6 +27,14 @@ class Geography {
     private static final String STATE_NAME = "NAME";
 
     /**
+     * We indicate with UNKNOWN that the position
+     * doesn't lie within any of the shapefile polygons.
+     *
+     * i.e. we're creating an UNKNOWN class.
+     */
+    public static final String UNKNOWN_COUNTRY = "UNKNOWN";
+
+    /**
      * We'll store here the MultiPolygon extracted from the shapefile
      * in addition to their label (i.e. the country name).
      *
@@ -88,7 +96,7 @@ class Geography {
     /**
      * Query the polygons in our geography to find the country of the input coordinate.
      * @param coordinate the coordinate that needs to be queried.
-     * @return the name of the coordinate state or null if not found.
+     * @return the name of the coordinate state or UNKNOWN if not found.
      */
     public String query(Coordinate coordinate) {
         point.getCoordinate().setOrdinate(0, coordinate.getOrdinate(0));
@@ -101,7 +109,7 @@ class Geography {
             }
         }
 
-        return null;
+        return UNKNOWN_COUNTRY;
     }
 
     /**

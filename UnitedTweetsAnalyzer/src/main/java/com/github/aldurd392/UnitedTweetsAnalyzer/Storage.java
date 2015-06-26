@@ -237,12 +237,13 @@ class Storage {
         String country = this.geography.query(
                 new Coordinate(geoLocation.getLongitude(), geoLocation.getLatitude())
         );
+        assert country != null;
 
-        if (country == null) {
-            logger.warn("Skipping tweet whose country is unknown: {} - ({}, {})",
+        if (country.equals(Geography.UNKNOWN_COUNTRY)) {
+            logger.warn("Got a tweet whose country is {}: {} - ({}, {})",
+                    Geography.UNKNOWN_COUNTRY,
                     tweet.getId(),
                     geoLocation.getLatitude(), geoLocation.getLongitude());
-            return;
         }
 
         logger.debug("Tweet {}: {}", tweet.getId(), country);
