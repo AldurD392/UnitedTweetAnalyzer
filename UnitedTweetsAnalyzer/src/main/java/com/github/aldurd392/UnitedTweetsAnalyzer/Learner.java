@@ -66,7 +66,7 @@ class Learner {
      * Load from the DB all the unlabeled instances.
      * Those instances will be used for the unsupervised
      * machine learning task.
-     * <p/>
+     * <p>
      * Please note that the format retrieved by this query
      * must be equal to the one retrieved by trainingQuery.
      */
@@ -209,23 +209,36 @@ class Learner {
      */
     public void buildAndClassify() {
         try {
-
             logger.info("Building classifier {}...",
                     this.classifier.getClassifier().getClass().getSimpleName());
             this.classifier.buildClassifier(this.training_data);
 
             this.loadData(false);
+        } catch (Exception e) {
+            logger.error("Error while building classifier for new instances.", e);
+        }
 
-            for (Instance i : this.classification_data) {
+        for (Instance i : this.classification_data) {
+            try {
                 double classification = this.classifier.classifyInstance(i);
 
-                logger.debug("Classification: id: {}, class: {}",
+                logger.debug("Classification - id: {}, class: {}",
                         (int) i.value(this.training_data.attribute(Storage.ID).index()),
                         this.training_data.classAttribute().value((int) classification)
                 );
+            } catch (Exception e) {
+                /**
+                 * Some classifiers could be unable to do their job,
+                 * if trying to label instances with unseen attributes values
+                 * NaiveBayes, I'm looking at you!
+                 *
+                 * If we don't know in advance the attributes value space,
+                 * we can't classify those instances.
+                 */
+                logger.debug("Classification - id: {}, class: UNAVAILABLE",
+                        (int) i.value(this.training_data.attribute(Storage.ID).index())
+                );
             }
-        } catch (Exception e) {
-            logger.error("Error while classifying new instances.", e);
         }
     }
 
