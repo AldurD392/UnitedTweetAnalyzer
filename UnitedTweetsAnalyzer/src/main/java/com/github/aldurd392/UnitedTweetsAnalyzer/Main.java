@@ -25,6 +25,7 @@ class Main {
     private static final String STREAM_BIAS = "b";
     private static final String LEARNER_NAME = "l";
     private static final String EVALUATION_RATE = "e";
+    private static final String OUTPUT_PATH = "o";
     private static final String HELP = "h";
 
     /**
@@ -131,6 +132,15 @@ class Main {
                 .type(Float.class)
                 .build();
         options.addOption(evaluation_rate);
+
+        Option output_path = Option.builder(OUTPUT_PATH)
+                .longOpt("output path")
+                .desc("specify an optional output path for the unsupervised classification results")
+                .hasArg(true)
+                .required(false)
+                .type(String.class)
+                .build();
+        options.addOption(output_path);
 
         Option help = Option.builder(HELP)
                 .longOpt("help")
@@ -262,7 +272,7 @@ class Main {
                     }
                 } else {
                     Learner learner = new Learner(classifier_name);
-                    learner.buildAndClassify();
+                    learner.buildAndClassify(commandLine.getOptionValue(OUTPUT_PATH, null));
                 }
             } else {
                 throw new ParseException(value + "is not a valid value for -" + TASK);

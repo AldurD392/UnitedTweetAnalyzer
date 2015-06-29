@@ -1,5 +1,8 @@
 package com.github.aldurd392.UnitedTweetsAnalyzer;
 
+import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVPrinter;
+import org.apache.commons.io.IOUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -20,6 +23,8 @@ import weka.core.Instances;
 import weka.experiment.InstanceQuery;
 import weka.filters.unsupervised.attribute.Remove;
 
+import java.io.FileWriter;
+import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.util.*;
@@ -97,6 +102,11 @@ class Learner {
             Storage.TABLE_USER, Storage.ID,
             Storage.TABLE_USER, Storage.TABLE_TWEET,
             Storage.TABLE_USER, Storage.ID, Storage.TABLE_TWEET, Storage.USER_ID);
+
+    private static final char CSV_DELIMITER = ';';
+    private static final String[] CSV_FILE_HEADER = {
+            "id", "location", "country",
+    };
 
     private Instances training_data = null;
     private Instances classification_data = null;
@@ -284,7 +294,25 @@ class Learner {
      * It builds the classifier against the training set
      * and then assign a classification to each unlabeled instance.
      */
-    public void buildAndClassify() {
+    public void buildAndClassify(String output_path) {
+        CSVPrinter csvFilePrinter = null;
+        FileWriter fileWriter = null;
+
+        if (output_path != null) {
+            final CSVFormat csvFileFormat = CSVFormat.EXCEL.withDelimiter(CSV_DELIMITER);
+
+            try {
+                fileWriter = new FileWriter(output_path);
+                csvFilePrinter = new CSVPrinter(fileWriter, csvFileFormat);
+                csvFilePrinter.printRecord(CSV_FILE_HEADER);
+            } catch (IOException e) {
+                logger.warn("Error while creating CSV file printer", e);
+
+                IOUtils.closeQuietly(fileWriter);
+                IOUtils.closeQuietly(csvFilePrinter);
+            }
+        }
+
         try {
             logger.info("Building classifier {}...",
                     this.classifier.getClassifier().getClass().getSimpleName());
@@ -292,16 +320,34 @@ class Learner {
 
             this.loadData(false);
         } catch (Exception e) {
-            logger.error("Error while building classifier for new instances.", e);
+            logger.fatal("Error while building classifier for new instances.", e);
+
+            IOUtils.closeQuietly(fileWriter);
+            IOUtils.closeQuietly(csvFilePrinter);
+
+            return;
         }
+
+        final Attribute attribute_id = this.training_data.attribute(Storage.ID);
+        final Attribute attribute_location = this.training_data.attribute(Storage.LOCATION);
 
         for (Instance i : this.classification_data) {
             try {
                 double classification = this.classifier.classifyInstance(i);
+                Object[] values = {
+                        Double.valueOf(i.value(attribute_id)).longValue(),
+                        String.valueOf(attribute_location.value(
+                                (int) i.value(attribute_location))
+                        ),
+                        this.training_data.classAttribute().value((int) classification),
+                };
+
+                if (csvFilePrinter != null) {
+                    csvFilePrinter.printRecord(values);
+                }
 
                 logger.debug("Classification - id: {}, class: {}",
-                        (int) i.value(this.training_data.attribute(Storage.ID).index()),
-                        this.training_data.classAttribute().value((int) classification)
+                        values[0], values[2]
                 );
             } catch (Exception e) {
                 /**
@@ -313,10 +359,13 @@ class Learner {
                  * we can't classify those instances.
                  */
                 logger.debug("Classification - id: {}, class: UNAVAILABLE",
-                        (int) i.value(this.training_data.attribute(Storage.ID).index())
+                        Double.valueOf(i.value(this.training_data.attribute(Storage.ID))).longValue()
                 );
             }
         }
+
+        IOUtils.closeQuietly(fileWriter);
+        IOUtils.closeQuietly(csvFilePrinter);
     }
 
     /**
