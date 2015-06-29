@@ -5,7 +5,6 @@ import org.apache.commons.csv.CSVPrinter;
 import org.apache.commons.io.IOUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
 import weka.classifiers.AbstractClassifier;
 import weka.classifiers.Classifier;
 import weka.classifiers.Evaluation;
@@ -14,12 +13,12 @@ import weka.classifiers.bayes.NaiveBayesUpdateable;
 import weka.classifiers.functions.LibSVM;
 import weka.classifiers.functions.MultilayerPerceptron;
 import weka.classifiers.meta.FilteredClassifier;
-import weka.classifiers.meta.MultiClassClassifier;
 import weka.classifiers.trees.J48;
 import weka.classifiers.trees.RandomForest;
 import weka.core.Attribute;
 import weka.core.Instance;
 import weka.core.Instances;
+import weka.core.SelectedTag;
 import weka.experiment.InstanceQuery;
 import weka.filters.unsupervised.attribute.Remove;
 
@@ -43,36 +42,18 @@ class Learner {
      * @see AbstractClassifier
      */
     public final static Map<String, Class<? extends AbstractClassifier>> classifiers;
-
-    /**
-     * Some classifiers are not suited to do multi-class learning.
-     * You can still use them, but you need to add them to the needMultiClass set too.
-     * See MultiLayerPerceptron as an example.
-     */
-    private final static Set<Class<? extends AbstractClassifier>> needMultiClass;
-
     static {
         HashMap<String, Class<? extends AbstractClassifier>> map = new HashMap<>();
-        HashSet<Class<? extends AbstractClassifier>> set = new HashSet<>();
 
         map.put("nbayes", NaiveBayesUpdateable.class);
         map.put("dtree", J48.class);
         map.put("random_forest", RandomForest.class);
-
-        /*
-         * Perceptron works in binary mode.
-         * So we tell the factory to wrap it inside a MultiClass Classifier.
-         */
         map.put("perceptron", MultilayerPerceptron.class);
-        set.add(MultilayerPerceptron.class);
-
         map.put("libsvm", LibSVM.class);
-        set.add(LibSVM.class);
 
 //      map.put("smo", SMO.class); // LibSVM is faster.
 
         classifiers = Collections.unmodifiableMap(map);
-        needMultiClass = Collections.unmodifiableSet(set);
     }
 
 
@@ -199,8 +180,8 @@ class Learner {
         Classifier classifier = this.classifier.getClassifier();
         if (classifier instanceof J48) {
             J48 j48 = (J48) classifier;
+            logger.info("Configuring {}...", J48.class.getSimpleName());
 
-            // Configure J48
             j48.setCollapseTree(false);
             j48.setBinarySplits(false);
             j48.setUnpruned(false);
@@ -211,33 +192,38 @@ class Learner {
             j48.setSubtreeRaising(false);
         } else if (classifier instanceof LibSVM) {
             LibSVM libSVM = (LibSVM) classifier;
+            logger.info("Configuring {}...", LibSVM.class.getSimpleName());
 
-            // Configure libSVM
             libSVM.setCacheSize(512); // MB
             libSVM.setNormalize(true);
             libSVM.setShrinking(true);
+            libSVM.setKernelType(new SelectedTag(LibSVM.KERNELTYPE_POLYNOMIAL, LibSVM.TAGS_KERNELTYPE));
+            libSVM.setDegree(3);
+            libSVM.setSVMType(new SelectedTag(LibSVM.SVMTYPE_C_SVC, LibSVM.TAGS_SVMTYPE));
         } else if (classifier instanceof NaiveBayes) {
             NaiveBayes naiveBayes = (NaiveBayes) classifier;
+            logger.info("Configuring {}...", NaiveBayes.class.getSimpleName());
 
             // Configure NaiveBayes
             naiveBayes.setUseKernelEstimator(false);
             naiveBayes.setUseSupervisedDiscretization(false);
         } else if (classifier instanceof RandomForest) {
             RandomForest rndForest = (RandomForest) classifier;
+            logger.info("Configuring {}...", RandomForest.class.getSimpleName());
 
             // Configure RandomForest
             rndForest.setNumExecutionSlots(5);
             rndForest.setNumTrees(50);
-        } else if (classifier instanceof MultiClassClassifier) {
-            MultiClassClassifier multiClassClassifier = (MultiClassClassifier) classifier;
+            rndForest.setMaxDepth(3);
+        } else if (classifier instanceof MultilayerPerceptron) {
+            MultilayerPerceptron perceptron = (MultilayerPerceptron) classifier;
+            logger.info("Configuring {}...", MultilayerPerceptron.class.getSimpleName());
 
-            if (multiClassClassifier.getClassifier() instanceof MultilayerPerceptron) {
-                MultilayerPerceptron perceptron = (MultilayerPerceptron) multiClassClassifier.getClassifier();
-
-                // Configure perceptron
-                perceptron.setAutoBuild(true);
-                perceptron.setTrainingTime(250); // epochs
-            }
+            // Configure perceptron
+            perceptron.setAutoBuild(true);
+            perceptron.setTrainingTime(250); // epochs
+            perceptron.setNominalToBinaryFilter(false);
+            perceptron.setNormalizeAttributes(true);
         }
     }
 
@@ -271,13 +257,7 @@ class Learner {
             this.classifier = new FilteredClassifier();
             this.classifier.setFilter(remove);
 
-            if (Learner.needMultiClass.contains(classifier_class)) {
-                MultiClassClassifier multiClassifier = new MultiClassClassifier();
-                multiClassifier.setClassifier(abstractClassifier);
-                this.classifier.setClassifier(multiClassifier);
-            } else {
-                this.classifier.setClassifier(abstractClassifier);
-            }
+            this.classifier.setClassifier(abstractClassifier);
 
             setupLearner();
         } catch (NoSuchMethodException |
