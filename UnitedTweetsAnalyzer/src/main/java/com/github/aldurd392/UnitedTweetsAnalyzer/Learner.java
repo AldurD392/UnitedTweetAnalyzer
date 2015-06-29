@@ -2,9 +2,10 @@ package com.github.aldurd392.UnitedTweetsAnalyzer;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
 import weka.classifiers.AbstractClassifier;
+import weka.classifiers.Classifier;
 import weka.classifiers.Evaluation;
+import weka.classifiers.bayes.NaiveBayes;
 import weka.classifiers.bayes.NaiveBayesUpdateable;
 import weka.classifiers.functions.LibSVM;
 import weka.classifiers.meta.FilteredClassifier;
@@ -156,7 +157,26 @@ class Learner {
     }
 
     /**
-     * Instanciate a classifier from it's name.
+     * Setup the classifier parameters'.
+     */
+    private void setupLearner() {
+        Classifier classifier = this.classifier.getClassifier();
+        if (classifier instanceof J48) {
+            J48 j48 = (J48)classifier;
+            // TODO, configure J48
+        } else if (classifier instanceof LibSVM) {
+            LibSVM libSVM = (LibSVM)classifier;
+            // TODO, configure libSVM
+        } else if (classifier instanceof NaiveBayes) {
+            NaiveBayes naiveBayes = (NaiveBayes)classifier;
+            // TODO, configure NaiveBayes
+        }
+
+        // ...and so on, you can configure your learner here.
+    }
+
+    /**
+     * Instantiate a classifier from it's name.
      * @param classifier_name the name of the classifier to be instantiated.
      * @throws Exception on instantiation error.
      */
