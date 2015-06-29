@@ -19,8 +19,10 @@ import java.io.Serializable;
 import java.util.*;
 
 /**
- * UnitedTweetsAnalyzer - com.github.aldurd392.UnitedTweetsAnalyzer
- * Created by aldur on 02/06/15.
+ * Handle the interactions with the Geography system.
+ *
+ * This class will load a shapefile and match/query points
+ * against the polygons it contains.
  */
 class Geography {
     private static final String DATASTORE_TYPE = "url";

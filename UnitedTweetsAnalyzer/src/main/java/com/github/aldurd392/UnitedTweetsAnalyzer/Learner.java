@@ -29,8 +29,9 @@ import java.lang.reflect.InvocationTargetException;
 import java.util.*;
 
 /**
- * UnitedTweetsAnalyzer - com.github.aldurd392.UnitedTweetsAnalyzer
- * Created by aldur on 25/06/15.
+ * Dynamically load and configure a Machine Learner based on a name.
+ * Train it and evaluate the obtained results,
+ * or classify unknown instances.
  */
 class Learner {
     private final static Logger logger = LogManager.getLogger(Learner.class.getSimpleName());
@@ -79,7 +80,7 @@ class Learner {
      * Load from the DB all the unlabeled instances.
      * Those instances will be used for the unsupervised
      * machine learning task.
-     * <p/>
+     * <p>
      * Please note that the format retrieved by this query
      * must be equal to the one retrieved by trainingQuery.
      */
@@ -287,6 +288,8 @@ class Learner {
      * Classify unseen instances.
      * It builds the classifier against the training set
      * and then assign a classification to each unlabeled instance.
+     *
+     * @param output_path optional path to store a CSV file with the results.
      */
     public void buildAndClassify(String output_path) {
         CSVPrinter csvFilePrinter = null;

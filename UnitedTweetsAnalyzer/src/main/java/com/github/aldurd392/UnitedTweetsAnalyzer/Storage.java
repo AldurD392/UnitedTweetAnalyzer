@@ -12,6 +12,9 @@ import weka.core.stemmers.SnowballStemmer;
 import java.io.File;
 import java.sql.*;
 
+/**
+ * Handle the interaction with the storage (an SQLite database).
+ */
 class Storage {
     private final static String JDBC_PREFIX = "jdbc:sqlite:";
     private final static String JDBC_DRIVER = "org.sqlite.JDBC";
@@ -31,15 +34,32 @@ class Storage {
     public final static String TABLE_USER = "USER";
     public final static String TABLE_TWEET = "TWEET";
 
-    public final static String COUNTRY = "COUNTRY";  // This will also be the classifier class
+    public final static String COUNTRY = "COUNTRY";  // This will also be the classifier class.
 
     private final static Logger logger = LogManager.getLogger(Storage.class.getSimpleName());
+
+    /**
+     * Stem the users' locations.
+     * We use the default stemmer, set up for english.
+     */
     private final static SnowballStemmer stemmer = new SnowballStemmer();
 
     private final Geography geography;
+
+    /**
+     * Keeps the connection to the DB.
+     */
     private Connection c = null;
 
+    /**
+     * Create the storage.
+     * @param geography a Geometry object to assign a country to stored tweets.
+     * @param database_path the database path.
+     */
     public Storage(Geography geography, String database_path) {
+        assert (geography != null);
+        assert (database_path != null);
+
         this.geography = geography;
         this.connect(database_path);
     }
@@ -56,7 +76,7 @@ class Storage {
         boolean exists = this.checkDataBase(dbPath);
 
         try {
-            /*
+            /**
              * Class.forName() dynamically loads the class
              * in order to execute static blocks only once.
              */

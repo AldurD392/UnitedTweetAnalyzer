@@ -11,7 +11,10 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 
-
+/**
+ * Main class.
+ * Parses the command line arguments and launch the selected task.
+ */
 class Main {
     private static final Logger logger = LogManager.getLogger(Main.class.getSimpleName());
 

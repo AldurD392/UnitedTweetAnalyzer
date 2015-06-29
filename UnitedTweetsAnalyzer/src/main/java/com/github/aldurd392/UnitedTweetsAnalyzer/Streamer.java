@@ -4,15 +4,19 @@ import org.apache.logging.log4j.LogManager;
 import twitter4j.*;
 
 /**
- * UnitedTweetsAnalyzer - com.github.aldurd392.UnitedTweetsAnalyzer
- * Created by aldur on 02/06/15.
+ * Connect to the Twitter stream and store the results.
  */
 class Streamer {
     private final static org.apache.logging.log4j.Logger logger = LogManager.getLogger(Streamer.class.getSimpleName());
 
 	private final Storage storage;
 
+    /**
+     * Build the streamer and prepare the storage.
+     * @param storage the storage in which stream Statues will be stored.
+     */
 	public Streamer(Storage storage){
+        assert (storage != null);
 		this.storage = storage;
 	}
 
@@ -47,7 +51,7 @@ class Streamer {
             }
 
             /*
-             * According to Twitter API we'd need to implement those methods too.
+             * According to Twitter APIs we'd need to implement those methods too.
              * This is an academic project, so we'd be fine here.
              */
             @Override

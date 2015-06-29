@@ -3,8 +3,9 @@ package com.github.aldurd392.UnitedTweetsAnalyzer;
 import org.geotools.geometry.Envelope2D;
 
 /**
- * UnitedTweetsAnalyzer - com.github.aldurd392.UnitedTweetsAnalyzer
- * Created by aldur on 02/06/15.
+ * This class contains the constants we need.
+ *
+ * Specifically, the bounding box we use to bias the stream.
  */
 class Constants {
     private final static double southWestLong = -125.1088;
