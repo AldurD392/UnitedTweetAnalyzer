@@ -29,10 +29,11 @@ public class MainTest
     }
 
     /**
-     * Rigourous Test :-)
+     * Test trimming and stemming.
      */
-    public void testApp()
-    {
-        assertTrue( true );
+    public void testStemming() {
+        assertEquals(Storage.stemLocation(""), null);
+        assertEquals(Storage.stemLocation("Germany , Germany"), "germany germani");
+        assertEquals(Storage.stemLocation("                 {  ITALIA   }"), "italia");
     }
 }

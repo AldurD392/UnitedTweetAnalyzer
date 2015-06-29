@@ -1,14 +1,13 @@
 package com.github.aldurd392.UnitedTweetsAnalyzer;
 
 import com.vividsolutions.jts.geom.Coordinate;
-
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
 import org.sqlite.SQLiteErrorCode;
 import twitter4j.GeoLocation;
 import twitter4j.Status;
 import twitter4j.User;
+import weka.core.stemmers.SnowballStemmer;
 
 import java.io.File;
 import java.sql.*;
@@ -35,6 +34,7 @@ class Storage {
     public final static String COUNTRY = "COUNTRY";  // This will also be the classifier class
 
     private final static Logger logger = LogManager.getLogger(Storage.class.getSimpleName());
+    private final static SnowballStemmer stemmer = new SnowballStemmer();
 
     private final Geography geography;
     private Connection c = null;
@@ -128,6 +128,34 @@ class Storage {
     }
 
     /**
+     * We stem the user Location field.
+     * It is a user-inserted string, that could differ from user to user.
+     * It is not parseable and it won't probably help us during classification.
+     * But its cost is low, so better try it.
+     *
+     * @param location string to be stemmed
+     * @return a stemmed string
+     */
+    public static String stemLocation(String location) {
+        if (location == null || location.length() == 0) {
+            return null;
+        }
+
+        /* Remove characters that aren't letter in any language. */
+        location = location.replaceAll("[^\\p{L}\\p{Z}]", "");
+        /* Replace multiple whitespaces with a single one. */
+        location = location.replaceAll("\\s+", " ");
+        location = location.toLowerCase();
+        location = location.trim();
+
+        if (location.length() == 0) {
+            return null;
+        }
+
+        return stemmer.stem(location);
+    }
+
+    /**
      * Insert a user in the Storage.
      * Skip already existing users (no update).
      * @param user the user to be inserted.
@@ -171,7 +199,7 @@ class Storage {
             stmt.setLong(1, user.getId());
             stmt.setString(2, user.getName());
             stmt.setString(3, user.getLang());
-            stmt.setString(4, user.getLocation().length() > 0 ? user.getLocation() : null);
+            stmt.setString(4, stemLocation(user.getLocation()));
 
             if (user.getUtcOffset() == -1) {
                 stmt.setNull(5, Types.INTEGER);
