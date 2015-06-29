@@ -103,6 +103,14 @@ class Geography {
         point.getCoordinate().setOrdinate(1, coordinate.getOrdinate(1));
         point.geometryChanged();  // Notify the geometry that a point's changed.
 
+        /** Before trying to locate the country,
+         * we make sure that the point lies within
+         * the specified bounding box.
+         */
+        if (!Geography.isInsideEnvelope(point)) {
+            return UNKNOWN_COUNTRY;
+        }
+
         for (Map.Entry<String, MultiPolygon> entry : this.polygons) {
             if (entry.getValue().contains(point)) {
                 return entry.getKey();
@@ -110,6 +118,15 @@ class Geography {
         }
 
         return UNKNOWN_COUNTRY;
+    }
+
+    /**
+     * Check if a point is inside the Constant envelopeBox.
+     * @param p the point to be checked.
+     * @return True if p is within the envelopeBox.
+     */
+    public static boolean isInsideEnvelope(Point p) {
+        return Constants.envelopeBox.contains(p.getX(), p.getY());
     }
 
     /**
