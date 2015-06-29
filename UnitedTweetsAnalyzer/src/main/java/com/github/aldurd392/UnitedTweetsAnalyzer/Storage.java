@@ -172,7 +172,7 @@ class Storage {
         }
 
         /* Remove characters that aren't letter in any language. */
-        location = location.replaceAll("[^\\p{L}\\p{Z}]", "");
+        location = location.replaceAll("[^\\p{L}\\p{Z}]", " ");
         /* Replace multiple whitespaces with a single one. */
         location = location.replaceAll("\\s+", " ");
         location = location.toLowerCase();
@@ -182,7 +182,13 @@ class Storage {
             return null;
         }
 
-        return stemmer.stem(location);
+        StringBuffer stringBuffer = new StringBuffer();
+        for (String w : location.split(" ")) {
+            stringBuffer.append(stemmer.stem(w));
+            stringBuffer.append(" ");
+        }
+
+        return stringBuffer.toString().trim();
     }
 
     /**

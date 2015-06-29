@@ -36,7 +36,8 @@ public class MainTest
      */
     public void testStemming() {
         assertEquals(Storage.stemLocation(""), null);
-        assertEquals(Storage.stemLocation("Germany , Germany"), "germany germani");
+        assertEquals(Storage.stemLocation("Germany/Germany"), "germani germani");
+        assertEquals(Storage.stemLocation("Germany , Germany"), "germani germani");
         assertEquals(Storage.stemLocation("                 {  ITALIA   }"), "italia");
     }
 
