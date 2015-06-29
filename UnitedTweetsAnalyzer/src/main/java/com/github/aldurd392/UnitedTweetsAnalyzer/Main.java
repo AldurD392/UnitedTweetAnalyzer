@@ -199,10 +199,10 @@ class Main {
                 Runtime.getRuntime().addShutdownHook(new Thread() {
                     public void run() {
                             try {
-                                storage.close();
                                 logger.info("Closing storage...");
+                                storage.close();
                             } catch (SQLException e) {
-                                logger.debug("Error while closing storage.");
+                                logger.debug("Error while closing storage.", e);
                                 // We're shutting down, nothing we can do.
                             }
                         }

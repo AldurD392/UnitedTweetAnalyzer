@@ -11,6 +11,7 @@ import weka.core.stemmers.SnowballStemmer;
 
 import java.io.File;
 import java.sql.*;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Handle the interaction with the storage (an SQLite database).
@@ -52,8 +53,14 @@ class Storage {
     private Connection c = null;
 
     /**
+     * Avoid shutting down the DB while someone is writing it.
+     */
+    private final ReentrantLock lock = new ReentrantLock();
+
+    /**
      * Create the storage.
-     * @param geography a Geometry object to assign a country to stored tweets.
+     *
+     * @param geography     a Geometry object to assign a country to stored tweets.
      * @param database_path the database path.
      */
     public Storage(Geography geography, String database_path) {
@@ -66,6 +73,7 @@ class Storage {
 
     /**
      * Connect the Storage to the SQLite DB.
+     *
      * @param dbPath the path to the DB.
      */
     private void connect(String dbPath) {
@@ -95,6 +103,7 @@ class Storage {
 
     /**
      * Check if the DB (or any file) exists at db_path.
+     *
      * @param db_path the path of the DB.
      * @return true is a file exists.
      */
@@ -105,7 +114,7 @@ class Storage {
     /**
      * Create tables in the DB.
      * We'll create two different tables, respectively containing Users and Tweets.
-     *
+     * <p>
      * The User's table contains (LOC):
      * - ID (PK) (We won't use it while learning)
      * - Username (We won't use it while learning)
@@ -113,12 +122,13 @@ class Storage {
      * - Location
      * - UTC Offset
      * - Timezone
-     *
+     * <p>
      * The Tweet's table contains:
      * - ID (PK)
      * - LAT / LON
      * - ID of the user (FK)
      * - Country
+     *
      * @throws SQLException on table creation error.
      */
     private void initDatabase() throws SQLException {
@@ -178,6 +188,7 @@ class Storage {
     /**
      * Insert a user in the Storage.
      * Skip already existing users (no update).
+     *
      * @param user the user to be inserted.
      * @throws SQLException on user insert error.
      */
@@ -248,114 +259,126 @@ class Storage {
     /**
      * Insert a Tweet in the DB, after trying to localizing it in our geography.
      * Store the User who tweeted too.
+     *
      * @param tweet the Twitter status containing the Tweet and the User's detail.
      */
     public void insertTweet(Status tweet) {
+        this.lock.lock();
+
         try {
-            this.insertUser(tweet.getUser());
-        } catch (SQLException e) {
-            logger.warn("Skipping tweet {} because of error while inserting user {}.",
-                    tweet.getId(), tweet.getUser().getId()
-            );
-        }
+            try {
+                this.insertUser(tweet.getUser());
+            } catch (SQLException e) {
+                logger.warn("Skipping tweet {} because of error while inserting user {}.",
+                        tweet.getId(), tweet.getUser().getId()
+                );
+            }
 
-        /**
-         * The status could contain various geolocation information.
-         * We honour at first the GPS coordinates.
-         * Then the Place details.
-         * In case of place we are given a bounding box of points and
-         * we'll use the centroid of the constructed polygon while
-         * assigning a country to the Tweet.
-         *
-         * We won't store in the DB Tweets that do not ship any location info.
-         */
-        GeoLocation geoLocation = tweet.getGeoLocation();
-        if (geoLocation == null && tweet.getPlace() != null) {
-            final int rows = tweet.getPlace().getBoundingBoxCoordinates().length;
-            final int columns = tweet.getPlace().getBoundingBoxCoordinates()[rows - 1].length;
+            /**
+             * The status could contain various geolocation information.
+             * We honour at first the GPS coordinates.
+             * Then the Place details.
+             * In case of place we are given a bounding box of points and
+             * we'll use the centroid of the constructed polygon while
+             * assigning a country to the Tweet.
+             *
+             * We won't store in the DB Tweets that do not ship any location info.
+             */
+            GeoLocation geoLocation = tweet.getGeoLocation();
+            if (geoLocation == null && tweet.getPlace() != null) {
+                final int rows = tweet.getPlace().getBoundingBoxCoordinates().length;
+                final int columns = tweet.getPlace().getBoundingBoxCoordinates()[rows - 1].length;
 
-            final GeoLocation first = tweet.getPlace().getBoundingBoxCoordinates()[0][0];
-            final GeoLocation last = tweet.getPlace().getBoundingBoxCoordinates()[rows - 1][columns - 1];
+                final GeoLocation first = tweet.getPlace().getBoundingBoxCoordinates()[0][0];
+                final GeoLocation last = tweet.getPlace().getBoundingBoxCoordinates()[rows - 1][columns - 1];
 
-            geoLocation = Geography.midPoint(first, last);
-        } else if (geoLocation == null) {
-            return;
-        }
-
-        String country = this.geography.query(
-                new Coordinate(geoLocation.getLongitude(), geoLocation.getLatitude())
-        );
-        assert country != null;
-
-        if (country.equals(Geography.UNKNOWN_COUNTRY)) {
-            logger.warn("Got a tweet whose country is {}: {} - ({}, {})",
-                    Geography.UNKNOWN_COUNTRY,
-                    tweet.getId(),
-                    geoLocation.getLatitude(), geoLocation.getLongitude());
-        }
-
-        logger.debug("Tweet {}: {}", tweet.getId(), country);
-
-        /**
-         * If the Tweet already exists in the DB, we have nothing to do here.
-         * Please note that, as a performance optimization,
-         * we could skip this step and catch an eventual SQL exception regarding the Tweet's PK.
-         */
-        /* Disabled due to performance optimization, we check the error code below.
-        String select = String.format("SELECT %s FROM %s WHERE %s = ?;",
-                ID, TABLE_TWEET, ID);
-        try (PreparedStatement stmt = this.c.prepareStatement(select)) {
-            stmt.setLong(1, tweet.getId());
-
-            if (stmt.executeQuery().next()) {
-                logger.debug("Tweet {} already exists in DB.", tweet.getId());
+                geoLocation = Geography.midPoint(first, last);
+            } else if (geoLocation == null) {
                 return;
             }
-        } catch (SQLException e) {
-            logger.error("Error while selecting tweet {}", tweet.getId());
-            logger.debug(e);
 
-            return;
-        }
-        */
+            String country = this.geography.query(
+                    new Coordinate(geoLocation.getLongitude(), geoLocation.getLatitude())
+            );
+            assert country != null;
 
-        /* Better use PreparedStatement,
-         * avoid some Russians hackers to
-         * SQL inject us! :)
-         */
-        String insert = "INSERT INTO " + TABLE_TWEET +
-                String.format(
-                        " (%s, %s, %s, %s, %s) VALUES (?, ?, ?, ?, ?);",
-                        ID, LAT, LON, COUNTRY, USER_ID);
+            if (country.equals(Geography.UNKNOWN_COUNTRY)) {
+                logger.warn("Got a tweet whose country is {}: {} - ({}, {})",
+                        Geography.UNKNOWN_COUNTRY,
+                        tweet.getId(),
+                        geoLocation.getLatitude(), geoLocation.getLongitude());
+            }
 
-        try (PreparedStatement stmt = this.c.prepareStatement(insert)) {
-            stmt.setLong(1, tweet.getId());
-            stmt.setDouble(2, geoLocation.getLatitude());
-            stmt.setDouble(3, geoLocation.getLongitude());
-            stmt.setString(4, country);
-            stmt.setLong(5, tweet.getUser().getId());
+            logger.debug("Tweet {}: {}", tweet.getId(), country);
 
-            stmt.executeUpdate();
-        } catch (SQLException e) {
+            /**
+             * If the Tweet already exists in the DB, we have nothing to do here.
+             * Please note that, as a performance optimization,
+             * we could skip this step and catch an eventual SQL exception regarding the Tweet's PK.
+             */
+            /* Disabled due to performance optimization, we check the error code below.
+            String select = String.format("SELECT %s FROM %s WHERE %s = ?;",
+                    ID, TABLE_TWEET, ID);
+            try (PreparedStatement stmt = this.c.prepareStatement(select)) {
+                stmt.setLong(1, tweet.getId());
+
+                if (stmt.executeQuery().next()) {
+                    logger.debug("Tweet {} already exists in DB.", tweet.getId());
+                    return;
+                }
+            } catch (SQLException e) {
+                logger.error("Error while selecting tweet {}", tweet.getId());
+                logger.debug(e);
+
+                return;
+            }
+            */
+
+            /* Better use PreparedStatement,
+             * avoid some Russians hackers to
+             * SQL inject us! :)
+             */
+            String insert = "INSERT INTO " + TABLE_TWEET +
+                    String.format(
+                            " (%s, %s, %s, %s, %s) VALUES (?, ?, ?, ?, ?);",
+                            ID, LAT, LON, COUNTRY, USER_ID);
+
+            try (PreparedStatement stmt = this.c.prepareStatement(insert)) {
+                stmt.setLong(1, tweet.getId());
+                stmt.setDouble(2, geoLocation.getLatitude());
+                stmt.setDouble(3, geoLocation.getLongitude());
+                stmt.setString(4, country);
+                stmt.setLong(5, tweet.getUser().getId());
+
+                stmt.executeUpdate();
+            } catch (SQLException e) {
             /*
              * Having a constraint error is likely to indicate
              * that the Tweet already exists in the DB,
              * and we're violating the constraint on the PK ID.
              */
-            if (e.getErrorCode() == SQLiteErrorCode.SQLITE_CONSTRAINT.code) {
-                logger.debug("Tweet {} already exists in DB.", tweet.getId());
-            } else {
-                logger.error("Error while inserting tweet {}", tweet.getId(), e);
+                if (e.getErrorCode() == SQLiteErrorCode.SQLITE_CONSTRAINT.code) {
+                    logger.debug("Tweet {} already exists in DB.", tweet.getId());
+                } else {
+                    logger.error("Error while inserting tweet {}", tweet.getId(), e);
+                }
             }
+        } finally {
+            this.lock.unlock();
         }
     }
 
     /**
      * Close the Storage.
+     *
      * @throws SQLException on close error.
      */
     public void close() throws SQLException {
-        this.c.commit();
-        this.c.close();
+        try {
+            this.lock.lock();
+            this.c.close();
+        } finally {
+            this.lock.unlock();
+        }
     }
 }
