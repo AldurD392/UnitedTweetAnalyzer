@@ -155,6 +155,11 @@ class Learner {
         }
     }
 
+    /**
+     * Instanciate a classifier from it's name.
+     * @param classifier_name the name of the classifier to be instantiated.
+     * @throws Exception on instantiation error.
+     */
     private void classifierFactory(String classifier_name) throws Exception {
         Class<? extends AbstractClassifier> classifier_class = Learner.classifiers.get(classifier_name);
 

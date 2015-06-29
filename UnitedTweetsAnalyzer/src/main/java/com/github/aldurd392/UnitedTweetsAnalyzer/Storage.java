@@ -299,6 +299,10 @@ class Storage {
         }
         */
 
+        /* Better use PreparedStatement,
+         * avoid some Russians hackers to
+         * SQL inject us! :)
+         */
         String insert = "INSERT INTO " + TABLE_TWEET +
                 String.format(
                         " (%s, %s, %s, %s, %s) VALUES (?, ?, ?, ?, ?);",
