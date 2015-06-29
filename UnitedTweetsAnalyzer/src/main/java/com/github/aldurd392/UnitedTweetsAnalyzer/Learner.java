@@ -44,17 +44,37 @@ class Learner {
      */
     public final static Map<String, Class<? extends AbstractClassifier>> classifiers;
 
+    /**
+     * Some classifiers are not suited to do multi-class learning.
+     * You can still use them, but you need to add them to the needMultiClass set too.
+     * See MultiLayerPerceptron as an example.
+     */
+    private final static Set<Class<? extends AbstractClassifier>> needMultiClass;
+
     static {
         HashMap<String, Class<? extends AbstractClassifier>> map = new HashMap<>();
+        HashSet<Class<? extends AbstractClassifier>> set = new HashSet<>();
+
         map.put("nbayes", NaiveBayesUpdateable.class);
         map.put("dtree", J48.class);
-        map.put("libsvm", LibSVM.class);
         map.put("random_forest", RandomForest.class);
+
+        /*
+         * Perceptron works in binary mode.
+         * So we tell the factory to wrap it inside a MultiClass Classifier.
+         */
         map.put("perceptron", MultilayerPerceptron.class);
+        set.add(MultilayerPerceptron.class);
+
+        map.put("libsvm", LibSVM.class);
+        set.add(LibSVM.class);
+
 //      map.put("smo", SMO.class); // LibSVM is faster.
 
         classifiers = Collections.unmodifiableMap(map);
+        needMultiClass = Collections.unmodifiableSet(set);
     }
+
 
     /**
      * Load from the DB all the labeled instances.
@@ -78,7 +98,7 @@ class Learner {
      * Load from the DB all the unlabeled instances.
      * Those instances will be used for the unsupervised
      * machine learning task.
-     * <p>
+     * <p/>
      * Please note that the format retrieved by this query
      * must be equal to the one retrieved by trainingQuery.
      */
@@ -178,9 +198,9 @@ class Learner {
     private void setupLearner() {
         Classifier classifier = this.classifier.getClassifier();
         if (classifier instanceof J48) {
-            
-        		J48 j48 = (J48)classifier;
-            //configure J48
+            J48 j48 = (J48) classifier;
+
+            // Configure J48
             j48.setCollapseTree(false);
             j48.setBinarySplits(false);
             j48.setUnpruned(false);
@@ -189,44 +209,41 @@ class Learner {
             j48.setUseLaplace(true);
             j48.setNumFolds(5);
             j48.setSubtreeRaising(false);
-            
         } else if (classifier instanceof LibSVM) {
-            
-        		LibSVM libSVM = (LibSVM)classifier;
-            //configure libSVM
-        		libSVM.setCacheSize(512); // 512 MB
-        		libSVM.setNormalize(true);
-        		libSVM.setShrinking(true);
-            
+            LibSVM libSVM = (LibSVM) classifier;
+
+            // Configure libSVM
+            libSVM.setCacheSize(512); // MB
+            libSVM.setNormalize(true);
+            libSVM.setShrinking(true);
         } else if (classifier instanceof NaiveBayes) {
-            
-        	NaiveBayes naiveBayes = (NaiveBayes)classifier;
-            //configure NaiveBayes
+            NaiveBayes naiveBayes = (NaiveBayes) classifier;
+
+            // Configure NaiveBayes
             naiveBayes.setUseKernelEstimator(false);
             naiveBayes.setUseSupervisedDiscretization(false);
-            
-        } else if (classifier instanceof RandomForest){
-        	
-        		RandomForest rndForest = (RandomForest)classifier;
-        		//configure RandomForest
-        		rndForest.setNumExecutionSlots(5);
-        		rndForest.setNumTrees(50);  	
-        	
-        } else if (classifier instanceof MultiClassClassifier){
-        	
-        		MultiClassClassifier multiClassClassifier = (MultiClassClassifier)classifier;
-        		if (multiClassClassifier.getClassifier() instanceof MultilayerPerceptron){
-	        		
-        			MultilayerPerceptron perceptron = (MultilayerPerceptron) multiClassClassifier.getClassifier();
-	        		//configure perceptron
-	        		perceptron.setAutoBuild(true);
-	        		perceptron.setTrainingTime(250); // epochs
-        		}
+        } else if (classifier instanceof RandomForest) {
+            RandomForest rndForest = (RandomForest) classifier;
+
+            // Configure RandomForest
+            rndForest.setNumExecutionSlots(5);
+            rndForest.setNumTrees(50);
+        } else if (classifier instanceof MultiClassClassifier) {
+            MultiClassClassifier multiClassClassifier = (MultiClassClassifier) classifier;
+
+            if (multiClassClassifier.getClassifier() instanceof MultilayerPerceptron) {
+                MultilayerPerceptron perceptron = (MultilayerPerceptron) multiClassClassifier.getClassifier();
+
+                // Configure perceptron
+                perceptron.setAutoBuild(true);
+                perceptron.setTrainingTime(250); // epochs
+            }
         }
     }
 
     /**
      * Instantiate a classifier from it's name.
+     *
      * @param classifier_name the name of the classifier to be instantiated.
      * @throws Exception on instantiation error.
      */
@@ -250,22 +267,19 @@ class Learner {
             remove.setAttributeIndices(
                     String.format("%d", idAttr.index() + 1)
             );
-            
-       		this.classifier = new FilteredClassifier();
-       		this.classifier.setFilter(remove);
-            
-            if (abstractClassifier instanceof MultilayerPerceptron){
-            	
-            		MultiClassClassifier multiClassifier = new MultiClassClassifier();
-            		multiClassifier.setClassifier(abstractClassifier);
-        			this.classifier.setClassifier(multiClassifier);
-            	
-            }else{
-            		this.classifier.setClassifier(abstractClassifier);
-            }
-            
-            setupLearner();
 
+            this.classifier = new FilteredClassifier();
+            this.classifier.setFilter(remove);
+
+            if (Learner.needMultiClass.contains(classifier_class)) {
+                MultiClassClassifier multiClassifier = new MultiClassClassifier();
+                multiClassifier.setClassifier(abstractClassifier);
+                this.classifier.setClassifier(multiClassifier);
+            } else {
+                this.classifier.setClassifier(abstractClassifier);
+            }
+
+            setupLearner();
         } catch (NoSuchMethodException |
                 InvocationTargetException |
                 InstantiationException |
@@ -337,7 +351,7 @@ class Learner {
                 Object[] values = {
                         Double.valueOf(i.value(attribute_id)).longValue(),
                         String.valueOf(attribute_location.value(
-                                (int) i.value(attribute_location))
+                                        (int) i.value(attribute_location))
                         ),
                         this.training_data.classAttribute().value((int) classification),
                 };
