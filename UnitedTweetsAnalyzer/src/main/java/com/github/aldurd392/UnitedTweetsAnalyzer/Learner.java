@@ -2,14 +2,18 @@ package com.github.aldurd392.UnitedTweetsAnalyzer;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
 import weka.classifiers.AbstractClassifier;
 import weka.classifiers.Classifier;
 import weka.classifiers.Evaluation;
 import weka.classifiers.bayes.NaiveBayes;
 import weka.classifiers.bayes.NaiveBayesUpdateable;
 import weka.classifiers.functions.LibSVM;
+import weka.classifiers.functions.MultilayerPerceptron;
 import weka.classifiers.meta.FilteredClassifier;
+import weka.classifiers.meta.MultiClassClassifier;
 import weka.classifiers.trees.J48;
+import weka.classifiers.trees.RandomForest;
 import weka.core.Attribute;
 import weka.core.Instance;
 import weka.core.Instances;
@@ -40,8 +44,10 @@ class Learner {
         map.put("nbayes", NaiveBayesUpdateable.class);
         map.put("dtree", J48.class);
         map.put("libsvm", LibSVM.class);
-//        map.put("smo", SMO.class);
-//        map.put("random_forest", RandomForest.class);
+        map.put("random_forest", RandomForest.class);
+        map.put("perceptron", MultilayerPerceptron.class);
+//      map.put("smo", SMO.class); // LibSVM is faster.
+
         classifiers = Collections.unmodifiableMap(map);
     }
 
@@ -162,17 +168,51 @@ class Learner {
     private void setupLearner() {
         Classifier classifier = this.classifier.getClassifier();
         if (classifier instanceof J48) {
-            J48 j48 = (J48)classifier;
-            // TODO, configure J48
+            
+        		J48 j48 = (J48)classifier;
+            //configure J48
+            j48.setCollapseTree(false);
+            j48.setBinarySplits(false);
+            j48.setUnpruned(false);
+            j48.setReducedErrorPruning(false);
+            j48.setConfidenceFactor(0.25f);
+            j48.setUseLaplace(true);
+            j48.setNumFolds(5);
+            j48.setSubtreeRaising(false);
+            
         } else if (classifier instanceof LibSVM) {
-            LibSVM libSVM = (LibSVM)classifier;
-            // TODO, configure libSVM
+            
+        		LibSVM libSVM = (LibSVM)classifier;
+            //configure libSVM
+        		libSVM.setCacheSize(512); // 512 MB
+        		libSVM.setNormalize(true);
+        		libSVM.setShrinking(true);
+            
         } else if (classifier instanceof NaiveBayes) {
-            NaiveBayes naiveBayes = (NaiveBayes)classifier;
-            // TODO, configure NaiveBayes
+            
+        	NaiveBayes naiveBayes = (NaiveBayes)classifier;
+            //configure NaiveBayes
+            naiveBayes.setUseKernelEstimator(false);
+            naiveBayes.setUseSupervisedDiscretization(false);
+            
+        } else if (classifier instanceof RandomForest){
+        	
+        		RandomForest rndForest = (RandomForest)classifier;
+        		//configure RandomForest
+        		rndForest.setNumExecutionSlots(5);
+        		rndForest.setNumTrees(50);  	
+        	
+        } else if (classifier instanceof MultiClassClassifier){
+        	
+        		MultiClassClassifier multiClassClassifier = (MultiClassClassifier)classifier;
+        		if (multiClassClassifier.getClassifier() instanceof MultilayerPerceptron){
+	        		
+        			MultilayerPerceptron perceptron = (MultilayerPerceptron) multiClassClassifier.getClassifier();
+	        		//configure perceptron
+	        		perceptron.setAutoBuild(true);
+	        		perceptron.setTrainingTime(250); // epochs
+        		}
         }
-
-        // ...and so on, you can configure your learner here.
     }
 
     /**
@@ -200,10 +240,22 @@ class Learner {
             remove.setAttributeIndices(
                     String.format("%d", idAttr.index() + 1)
             );
+            
+       		this.classifier = new FilteredClassifier();
+       		this.classifier.setFilter(remove);
+            
+            if (abstractClassifier instanceof MultilayerPerceptron){
+            	
+            		MultiClassClassifier multiClassifier = new MultiClassClassifier();
+            		multiClassifier.setClassifier(abstractClassifier);
+        			this.classifier.setClassifier(multiClassifier);
+            	
+            }else{
+            		this.classifier.setClassifier(abstractClassifier);
+            }
+            
+            setupLearner();
 
-            this.classifier = new FilteredClassifier();
-            this.classifier.setFilter(remove);
-            this.classifier.setClassifier(abstractClassifier);
         } catch (NoSuchMethodException |
                 InvocationTargetException |
                 InstantiationException |
