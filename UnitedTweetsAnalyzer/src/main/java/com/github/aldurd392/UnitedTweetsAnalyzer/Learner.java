@@ -106,7 +106,7 @@ class Learner {
             Storage.TABLE_USER, Storage.ID, Storage.TABLE_TWEET, Storage.USER_ID);
 
     private static final char CSV_DELIMITER = ';';
-    private static final String[] CSV_FILE_HEADER = {
+    private static final Object[] CSV_FILE_HEADER = {
             "id", "location", "country",
     };
 
@@ -163,6 +163,7 @@ class Learner {
             }
 
             instances.setClass(instances.attribute(Storage.COUNTRY));
+
             instances.randomize(new Random());
         } catch (Exception e) {
             logger.error("Error while executing DB query", e);
