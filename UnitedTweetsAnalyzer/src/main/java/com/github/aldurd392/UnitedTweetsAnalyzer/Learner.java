@@ -12,9 +12,12 @@ import weka.classifiers.bayes.NaiveBayes;
 import weka.classifiers.bayes.NaiveBayesUpdateable;
 import weka.classifiers.functions.LibSVM;
 import weka.classifiers.functions.MultilayerPerceptron;
+import weka.classifiers.functions.SMO;
+import weka.classifiers.lazy.KStar;
+import weka.classifiers.meta.AdaBoostM1;
 import weka.classifiers.meta.FilteredClassifier;
-import weka.classifiers.trees.J48;
-import weka.classifiers.trees.RandomForest;
+import weka.classifiers.rules.PART;
+import weka.classifiers.trees.*;
 import weka.core.Attribute;
 import weka.core.Instance;
 import weka.core.Instances;
@@ -47,12 +50,22 @@ class Learner {
         HashMap<String, Class<? extends AbstractClassifier>> map = new HashMap<>();
 
         map.put("nbayes", NaiveBayesUpdateable.class);
+
         map.put("dtree", J48.class);
+        map.put("reptree", REPTree.class);
+        map.put("htree", HoeffdingTree.class);
+        map.put("part", PART.class);
+        map.put("random_tree", RandomTree.class);
         map.put("random_forest", RandomForest.class);
+        map.put("decision_stump", DecisionStump.class);
+
         map.put("perceptron", MultilayerPerceptron.class);
         map.put("libsvm", LibSVM.class);
+        map.put("smo", SMO.class); // LibSVM is faster.
 
-//      map.put("smo", SMO.class); // LibSVM is faster.
+        map.put("kstar", KStar.class);
+
+        map.put("adaboost", AdaBoostM1.class);
 
         classifiers = Collections.unmodifiableMap(map);
     }
