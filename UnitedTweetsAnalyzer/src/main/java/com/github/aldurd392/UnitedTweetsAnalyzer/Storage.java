@@ -12,6 +12,7 @@ import weka.core.stemmers.SnowballStemmer;
 import java.io.File;
 import java.sql.*;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.regex.Pattern;
 
 /**
  * Handle the interaction with the storage (an SQLite database).
@@ -44,6 +45,12 @@ class Storage {
      * We use the default stemmer, set up for english.
      */
     private final static SnowballStemmer stemmer = new SnowballStemmer();
+
+    /**
+     * Compile the regexps we need to cache and optimize.
+     */
+    private final static Pattern re_letters = Pattern.compile("[^\\p{L}\\p{Z}]");
+    private final static Pattern re_spaces = Pattern.compile("\\s+");
 
     private final Geography geography;
 
@@ -172,9 +179,10 @@ class Storage {
         }
 
         /* Remove characters that aren't letter in any language. */
-        location = location.replaceAll("[^\\p{L}\\p{Z}]", " ");
+        location = re_letters.matcher(location).replaceAll(" ");
         /* Replace multiple whitespaces with a single one. */
-        location = location.replaceAll("\\s+", " ");
+        location = re_spaces.matcher(location).replaceAll(" ");
+
         location = location.toLowerCase();
         location = location.trim();
 
@@ -182,7 +190,7 @@ class Storage {
             return null;
         }
 
-        StringBuffer stringBuffer = new StringBuffer();
+        StringBuilder stringBuffer = new StringBuilder();
         for (String w : location.split(" ")) {
             stringBuffer.append(stemmer.stem(w));
             stringBuffer.append(" ");
