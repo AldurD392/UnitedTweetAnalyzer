@@ -205,21 +205,23 @@ class Main {
                 Geography geography = new Geography(shapefile_path);
                 final Storage storage = new Storage(geography, DEFAULT_DATABASE_PATH);
 
+                final String streaming_bias = commandLine.getOptionValue(STREAM_BIAS, STREAM_BIAS_TYPE[0]);
+                final Streamer streamer = new Streamer(storage);
+
                 // While shutting down we'll close the storage.
                 Runtime.getRuntime().addShutdownHook(new Thread() {
                     public void run() {
                             try {
-                                logger.info("Closing storage...");
+                                logger.info("Shutting down...");
+                                streamer.stopListening();
                                 storage.close();
                             } catch (SQLException e) {
-                                logger.debug("Error while closing storage.", e);
+                                logger.debug("Error while shutting down.", e);
                                 // We're shutting down, nothing we can do.
                             }
                         }
                 });
 
-                String streaming_bias = commandLine.getOptionValue(STREAM_BIAS, STREAM_BIAS_TYPE[0]);
-                Streamer streamer = new Streamer(storage);
                 streamer.startListening(streaming_bias.equals(STREAM_BIAS_TYPE[0]));
             }
             /**

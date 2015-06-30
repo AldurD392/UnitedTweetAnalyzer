@@ -10,6 +10,7 @@ class Streamer {
     private final static org.apache.logging.log4j.Logger logger = LogManager.getLogger(Streamer.class.getSimpleName());
 
 	private final Storage storage;
+    private TwitterStream twitterStream = null;
 
     /**
      * Build the streamer and prepare the storage.
@@ -27,7 +28,7 @@ class Streamer {
      *                       bounding box or has to be a random 1% sample.
      */
     public void startListening(boolean locationBiased) {
-        TwitterStream twitterStream = new TwitterStreamFactory().getInstance();
+        this.twitterStream = new TwitterStreamFactory().getInstance();
 
         StatusListener listener = new StatusListener() {
             @Override
@@ -69,6 +70,13 @@ class Streamer {
             twitterStream.filter(filterQuery);
         } else {
             twitterStream.sample();
+        }
+    }
+
+    public void stopListening() {
+        if (this.twitterStream != null) {
+            this.twitterStream.clearListeners();
+            this.twitterStream.cleanUp();
         }
     }
 }
