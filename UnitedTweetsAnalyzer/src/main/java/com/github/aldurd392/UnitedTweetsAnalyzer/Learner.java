@@ -32,6 +32,7 @@ import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.util.*;
+import java.util.regex.Pattern;
 
 /**
  * Dynamically load and configure a Machine Learner based on a name.
@@ -124,6 +125,8 @@ class Learner {
     private static final Object[] CSV_FILE_HEADER = {
             "id", "location", "country",
     };
+
+    final static Pattern re_spaces = Pattern.compile("\\s+");
 
     private Instances training_data = null;
     private Instances classification_data = null;
@@ -302,7 +305,7 @@ class Learner {
                 /**
                  * Set the command line options.
                  */
-                abstractClassifier.setOptions(cl_config.split("\\s+"));
+                abstractClassifier.setOptions(re_spaces.split(cl_config));
             }
         } catch (NoSuchMethodException |
                 InvocationTargetException |
