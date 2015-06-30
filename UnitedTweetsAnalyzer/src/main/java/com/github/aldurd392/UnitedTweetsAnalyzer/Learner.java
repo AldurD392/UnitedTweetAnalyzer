@@ -279,7 +279,10 @@ class Learner {
             setupLearner();
 
             if (cl_config != null) {
-                this.classifier.setOptions(cl_config.split("\\s+"));
+                /**
+                 * Set the command line options.
+                 */
+                abstractClassifier.setOptions(cl_config.split("\\s+"));
             }
         } catch (NoSuchMethodException |
                 InvocationTargetException |

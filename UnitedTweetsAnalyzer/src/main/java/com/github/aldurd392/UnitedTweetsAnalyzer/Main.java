@@ -146,7 +146,7 @@ class Main {
                 .build();
         options.addOption(output_path);
 
-        Option learner_cl = Option.builder(OUTPUT_PATH)
+        Option learner_cl = Option.builder(LEARNER_CL)
                 .longOpt("learner_cl")
                 .desc("specify the Weka-like configuration of the learner")
                 .hasArg(true)
