@@ -30,4 +30,14 @@ class Constants {
         envelopeBox.include(northEastLong, northEastLat);
         envelopeBox.include(southWestLong, southWestLat);
     }
+
+    /**
+     * This intent will let us add the user ID and build a URL to the user profile.
+     */
+    public final static String twitter_user_intent = "=HYPERLINK(\"https://twitter.com/intent/user?user_id=%d\")";
+
+    /**
+     * Limit the number of unlabeled instances we classify.
+     */
+    public final static int classification_limit = 200;
 }

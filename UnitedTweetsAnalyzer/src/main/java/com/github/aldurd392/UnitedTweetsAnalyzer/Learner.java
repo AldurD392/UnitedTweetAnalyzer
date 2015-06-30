@@ -97,6 +97,8 @@ class Learner {
      * Those instances will be used for the unsupervised
      * machine learning task.
      * <p>
+     * We take a sample of the unlabeled data.
+     * <p>
      * Please note that the format retrieved by this query
      * must be equal to the one retrieved by trainingQuery.
      */
@@ -108,7 +110,9 @@ class Learner {
                     "SELECT %s.%s " +
                     "FROM %s, %s " +
                     "WHERE %s.%s = %s.%s" +
-                    ")",
+                    ")" +
+                    "ORDER BY RANDOM()" +
+                    "LIMIT %d" ,
             Storage.TABLE_USER, Storage.ID,
             Storage.TABLE_USER, Storage.LANG,
             Storage.TABLE_USER, Storage.LOCATION,
@@ -119,11 +123,13 @@ class Learner {
             Storage.ID,
             Storage.TABLE_USER, Storage.ID,
             Storage.TABLE_USER, Storage.TABLE_TWEET,
-            Storage.TABLE_USER, Storage.ID, Storage.TABLE_TWEET, Storage.USER_ID);
+            Storage.TABLE_USER, Storage.ID, Storage.TABLE_TWEET, Storage.USER_ID,
+            Constants.classification_limit
+    );
 
     private static final char CSV_DELIMITER = ';';
     private static final Object[] CSV_FILE_HEADER = {
-            "id", "location", "country",
+            "id", "profile_url", "location", "lang", "utc_offset", "timezone", "country",
     };
 
     final static Pattern re_spaces = Pattern.compile("\\s+");
@@ -371,17 +377,23 @@ class Learner {
             return;
         }
 
-        final Attribute attribute_id = this.training_data.attribute(Storage.ID);
-        final Attribute attribute_location = this.training_data.attribute(Storage.LOCATION);
+        final Attribute attribute_id = this.classification_data.attribute(Storage.ID);
+        final Attribute attribute_location = this.classification_data.attribute(Storage.LOCATION);
+        final Attribute attribute_lang = this.classification_data.attribute(Storage.LANG);
+        final Attribute attribute_utc_offset = this.classification_data.attribute(Storage.UTC_OFFSET);
+        final Attribute attribute_timezone = this.classification_data.attribute(Storage.TIMEZONE);
 
         for (Instance i : this.classification_data) {
             try {
                 double classification = this.classifier.classifyInstance(i);
+                long id = Double.valueOf(i.value(attribute_id)).longValue();
                 Object[] values = {
-                        Double.valueOf(i.value(attribute_id)).longValue(),
-                        String.valueOf(attribute_location.value(
-                                        (int) i.value(attribute_location))
-                        ),
+                        id,
+                        String.format(Constants.twitter_user_intent, id),
+                        i.stringValue(attribute_location),
+                        i.stringValue(attribute_lang),
+                        i.stringValue(attribute_utc_offset),
+                        i.stringValue(attribute_timezone),
                         this.training_data.classAttribute().value((int) classification),
                 };
 
@@ -389,9 +401,7 @@ class Learner {
                     csvFilePrinter.printRecord(values);
                 }
 
-                logger.debug("Classification - id: {}, class: {}",
-                        values[0], values[2]
-                );
+                logger.debug("Classification - {} -> {}", i.toString(), values[6]);
             } catch (Exception e) {
                 /**
                  * Some classifiers could be unable to do their job,
@@ -404,6 +414,7 @@ class Learner {
                 logger.debug("Classification - id: {}, class: UNAVAILABLE",
                         Double.valueOf(i.value(this.training_data.attribute(Storage.ID))).longValue()
                 );
+                logger.debug("Exception stack trace", e);
             }
         }
 
