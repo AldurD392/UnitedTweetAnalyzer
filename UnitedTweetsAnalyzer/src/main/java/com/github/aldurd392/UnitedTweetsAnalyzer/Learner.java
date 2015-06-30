@@ -118,13 +118,14 @@ class Learner {
      * Build a new learner
      *
      * @param classifier_name the name of the classifier used by the learner.
+     * @param cl_config Weka command line configuration for the learner.
      * @throws Exception on error.
      */
-    public Learner(String classifier_name) throws Exception {
+    public Learner(String classifier_name, String cl_config) throws Exception {
         super();
 
         this.loadData(true);
-        this.classifierFactory(classifier_name);
+        this.classifierFactory(classifier_name, cl_config);
     }
 
     public Instances getTrainingData() {
@@ -233,9 +234,11 @@ class Learner {
      * Instantiate a classifier from it's name.
      *
      * @param classifier_name the name of the classifier to be instantiated.
+     * @param cl_config Weka configuration for the learner.
+     *                  This overrides the setup in {@link #setupLearner()}.
      * @throws Exception on instantiation error.
      */
-    private void classifierFactory(String classifier_name) throws Exception {
+    private void classifierFactory(String classifier_name, String cl_config) throws Exception {
         Class<? extends AbstractClassifier> classifier_class = Learner.classifiers.get(classifier_name);
 
         if (classifier_class == null) {
@@ -260,8 +263,11 @@ class Learner {
             this.classifier.setFilter(remove);
 
             this.classifier.setClassifier(abstractClassifier);
-
             setupLearner();
+
+            if (cl_config != null) {
+                this.classifier.setOptions(cl_config.split("\\s+"));
+            }
         } catch (NoSuchMethodException |
                 InvocationTargetException |
                 InstantiationException |

@@ -29,6 +29,7 @@ class Main {
     private static final String LEARNER_NAME = "l";
     private static final String EVALUATION_RATE = "e";
     private static final String OUTPUT_PATH = "o";
+    private static final String LEARNER_CL = "c";
     private static final String HELP = "h";
 
     /**
@@ -145,6 +146,15 @@ class Main {
                 .build();
         options.addOption(output_path);
 
+        Option learner_cl = Option.builder(OUTPUT_PATH)
+                .longOpt("learner_cl")
+                .desc("specify the Weka-like configuration of the learner")
+                .hasArg(true)
+                .required(false)
+                .type(String.class)
+                .build();
+        options.addOption(learner_cl);
+
         Option help = Option.builder(HELP)
                 .longOpt("help")
                 .desc("print this help")
@@ -247,7 +257,10 @@ class Main {
                         Learner bestLearner = null;
 
                         for (String classifier : Learner.classifiers.keySet()) {
-                            Learner learner = new Learner(classifier);
+                            Learner learner = new Learner(
+                                    classifier,
+                                    commandLine.getOptionValue(LEARNER_CL, null)
+                            );
                             eval = learner.buildAndEvaluate(evaluation_rate);
 
                             logger.info(eval.toSummaryString("Results\n", false));
@@ -269,12 +282,18 @@ class Main {
                                         false)
                         );
                     } else {
-                        Learner learner = new Learner(classifier_name);
+                        Learner learner = new Learner(
+                                classifier_name,
+                                commandLine.getOptionValue(LEARNER_CL, null)
+                        );
                         eval = learner.buildAndEvaluate(evaluation_rate);
                         logger.info(eval.toSummaryString("Results\n", false));
                     }
                 } else {
-                    Learner learner = new Learner(classifier_name);
+                    Learner learner = new Learner(
+                            classifier_name,
+                            commandLine.getOptionValue(LEARNER_CL, null)
+                    );
                     learner.buildAndClassify(commandLine.getOptionValue(OUTPUT_PATH, null));
                 }
             } else {
