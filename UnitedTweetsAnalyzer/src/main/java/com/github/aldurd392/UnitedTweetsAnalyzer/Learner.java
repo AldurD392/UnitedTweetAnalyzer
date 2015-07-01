@@ -410,24 +410,13 @@ class Learner {
         }
 
         for (Instance i : this.classification_data) {
-            final long id = Double.valueOf(i.value(attribute_id)).longValue();
-
-            Instance trimmedInstance;
-            try {
-                remove.input(i);
-                remove.batchFinished();
-
-                Instances instances = remove.getOutputFormat();
-                instances.add(remove.output());
-
-                trimmedInstance = instances.firstInstance();
-            } catch (Exception e) {
-                logger.debug("Error while removing attribute from instance.", e);
-                return;
-            }
+            remove.input(i);
+            Instance trimmedInstance = remove.output();
 
             try {
-                double classification = this.classifier.classifyInstance(trimmedInstance);
+                final double classification = this.classifier.classifyInstance(trimmedInstance);
+
+                final long id = Double.valueOf(i.value(attribute_id)).longValue();
                 Object[] values = {
                         id,
                         String.format(Constants.twitter_user_intent, id),
@@ -452,10 +441,10 @@ class Learner {
                  * If we don't know in advance the attributes value space,
                  * we can't classify those instances.
                  */
-                logger.debug("Classification - id: {}, class: UNAVAILABLE",
+                logger.warn("Classification - id: {}, class: UNAVAILABLE",
                         Double.valueOf(i.value(attribute_id)).longValue()
                 );
-                logger.debug("Exception stack trace", e);
+                logger.error("Error while classifying unlabeled instance", e);
             }
         }
 
