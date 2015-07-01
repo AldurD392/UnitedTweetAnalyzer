@@ -78,10 +78,9 @@ class Learner {
      * with an associated country.
      */
     private final static String trainingQuery = String.format(
-            "SELECT %s.%s, %s.%s, %s.%s, %s.%s, %s.%s, %s.%s " +
+            "SELECT %s.%s, %s.%s, %s.%s, %s.%s, %s.%s " +
                     "FROM %s, %s " +
                     "WHERE %s.%s = %s.%s",
-            Storage.TABLE_USER, Storage.ID,
             Storage.TABLE_USER, Storage.LANG,
             Storage.TABLE_USER, Storage.LOCATION,
             Storage.TABLE_USER, Storage.UTC_OFFSET,
@@ -202,11 +201,7 @@ class Learner {
                 query.setQuery(trainingQuery);
                 Instances instances = query.retrieveInstances();
 
-                Remove remove = new Remove();
-                remove.setAttributeIndices(String.format("%d", instances.attribute(Storage.ID).index()) + 1);
-                remove.setInputFormat(instances);
-
-                this.training_data = setUpData(instances, remove);
+                this.training_data = setUpData(instances, null);
                 this.training_data.randomize(new Random());
             } else {
                 query.setQuery(classificationQuery);
