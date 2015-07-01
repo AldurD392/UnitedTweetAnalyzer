@@ -5,10 +5,9 @@ import org.apache.commons.csv.CSVPrinter;
 import org.apache.commons.io.IOUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
 import weka.classifiers.AbstractClassifier;
-import weka.classifiers.Classifier;
 import weka.classifiers.Evaluation;
+import weka.classifiers.UpdateableClassifier;
 import weka.classifiers.bayes.NaiveBayes;
 import weka.classifiers.bayes.NaiveBayesUpdateable;
 import weka.classifiers.functions.LibSVM;
@@ -16,7 +15,6 @@ import weka.classifiers.functions.MultilayerPerceptron;
 import weka.classifiers.functions.SMO;
 import weka.classifiers.lazy.KStar;
 import weka.classifiers.meta.AdaBoostM1;
-import weka.classifiers.meta.FilteredClassifier;
 import weka.classifiers.rules.PART;
 import weka.classifiers.trees.*;
 import weka.core.Attribute;
@@ -136,7 +134,7 @@ class Learner {
 
     private Instances training_data = null;
     private Instances classification_data = null;
-    private FilteredClassifier classifier = null;
+    private AbstractClassifier classifier = null;
 
     /**
      * Build a new learner
@@ -156,7 +154,7 @@ class Learner {
         return this.training_data;
     }
 
-    public FilteredClassifier getClassifier() {
+    public AbstractClassifier getClassifier() {
         return this.classifier;
     }
     
@@ -169,18 +167,17 @@ class Learner {
      *  @return the set up instances.
      */
     public Instances setUpData(Instances instances, Filter filter) {
+        Instances newInstances = instances;
+
+        if (filter != null) {
+            try {
+                newInstances = Filter.useFilter(instances, filter);
+            } catch(Exception e){
+                logger.warn("Cannot filter data. Ignoring supplied filter.", e);
+            }
+        }
     		
-    		Instances newInstances = instances;
-    		
-    		if (filter != null) {
-    			try {
-    				newInstances = Filter.useFilter(instances, filter);
-    			} catch(Exception e){
-    				logger.warn("Cannot filter data, Ignoring filter.", e);
-    			}
-    		}
-    		
-        newInstances.setClass(instances.attribute(Storage.COUNTRY));
+        newInstances.setClass(newInstances.attribute(Storage.COUNTRY));
         return newInstances;
     }
 
@@ -193,8 +190,9 @@ class Learner {
      * @throws Exception on error.
      */
     private void loadData(boolean isTraining) throws Exception {
+        logger.info("Loading {} data.", isTraining ? "training" : "unlabeled");
+
         InstanceQuery query = null;
-        
         try {
             query = new InstanceQuery();
             query.setUsername("nobody");
@@ -202,9 +200,14 @@ class Learner {
 
             if (isTraining) {
                 query.setQuery(trainingQuery);
-                this.training_data = setUpData(query.retrieveInstances(), null);
+                Instances instances = query.retrieveInstances();
+
+                Remove remove = new Remove();
+                remove.setAttributeIndices(String.format("%d", instances.attribute(Storage.ID).index()) + 1);
+                remove.setInputFormat(instances);
+
+                this.training_data = setUpData(instances, remove);
                 this.training_data.randomize(new Random());
-                
             } else {
                 query.setQuery(classificationQuery);
                 this.classification_data = setUpData(query.retrieveInstances(), null);
@@ -224,8 +227,7 @@ class Learner {
      * Setup the classifier parameters'.
      */
     private void setupLearner() {
-        Classifier classifier = this.classifier.getClassifier();
-        if (classifier instanceof J48) {
+        if (this.classifier instanceof J48) {
             J48 j48 = (J48) classifier;
             logger.info("Configuring {}...", J48.class.getSimpleName());
 
@@ -237,7 +239,7 @@ class Learner {
             j48.setUseLaplace(true);
             j48.setNumFolds(5);
             j48.setSubtreeRaising(false);
-        } else if (classifier instanceof LibSVM) {
+        } else if (this.classifier instanceof LibSVM) {
             LibSVM libSVM = (LibSVM) classifier;
             logger.info("Configuring {}...", LibSVM.class.getSimpleName());
 
@@ -247,14 +249,14 @@ class Learner {
             libSVM.setKernelType(new SelectedTag(LibSVM.KERNELTYPE_POLYNOMIAL, LibSVM.TAGS_KERNELTYPE));
             libSVM.setDegree(3);
             libSVM.setSVMType(new SelectedTag(LibSVM.SVMTYPE_C_SVC, LibSVM.TAGS_SVMTYPE));
-        } else if (classifier instanceof NaiveBayes) {
+        } else if (this.classifier instanceof NaiveBayes) {
             NaiveBayes naiveBayes = (NaiveBayes) classifier;
             logger.info("Configuring {}...", NaiveBayes.class.getSimpleName());
 
             // Configure NaiveBayes
             naiveBayes.setUseKernelEstimator(false);
             naiveBayes.setUseSupervisedDiscretization(false);
-        } else if (classifier instanceof RandomForest) {
+        } else if (this.classifier instanceof RandomForest) {
             RandomForest rndForest = (RandomForest) classifier;
             logger.info("Configuring {}...", RandomForest.class.getSimpleName());
 
@@ -262,7 +264,7 @@ class Learner {
             rndForest.setNumExecutionSlots(5);
             rndForest.setNumTrees(50);
             rndForest.setMaxDepth(3);
-        } else if (classifier instanceof MultilayerPerceptron) {
+        } else if (this.classifier instanceof MultilayerPerceptron) {
             MultilayerPerceptron perceptron = (MultilayerPerceptron) classifier;
             logger.info("Configuring {}...", MultilayerPerceptron.class.getSimpleName());
 
@@ -295,16 +297,7 @@ class Learner {
             Constructor<? extends AbstractClassifier> constructor = classifier_class.getConstructor();
             AbstractClassifier abstractClassifier = constructor.newInstance();
 
-            Remove remove = new Remove();
-            Attribute idAttr = this.training_data.attribute(Storage.ID);
-            remove.setAttributeIndices(
-                    String.format("%d", idAttr.index() + 1)
-            );
-
-            this.classifier = new FilteredClassifier();
-            this.classifier.setFilter(remove);
-
-            this.classifier.setClassifier(abstractClassifier);
+            this.classifier = abstractClassifier;
             setupLearner();
 
             if (cl_config != null) {
@@ -321,19 +314,36 @@ class Learner {
             throw e;
         }
 
-        logger.debug("Classifier {} correctly created.", this.classifier.getClassifier().getClass().getSimpleName());
+        logger.debug("Classifier {} correctly created.", this.classifier.getClass().getSimpleName());
     }
 
+    // TODO Doc
     private Map.Entry<Instances, Instances> splitTrainingTestData(float percentage_split) {
         assert (percentage_split > 0 && percentage_split < 1);
 
         final int trainingSize = (int) Math.round(this.training_data.numInstances() * (1.0 - percentage_split));
         final int testingSize = this.training_data.numInstances() - trainingSize;
 
-        final Instances train = new Instances(training_data, 0, trainingSize);
-        final Instances test = new Instances(training_data, trainingSize, testingSize);
+        final Instances train = new Instances(this.training_data, 0, trainingSize);
+        final Instances test = new Instances(this.training_data, trainingSize, testingSize);
 
         return new AbstractMap.SimpleEntry<>(train, test);
+    }
+
+    // TODO: DOC
+    public void trainClassifier(Instances training_data) throws Exception{
+        if (this.classifier instanceof UpdateableClassifier) {
+            logger.info("Building updateable classifier.");
+            UpdateableClassifier classifier = (UpdateableClassifier) this.classifier;
+
+            this.classifier.buildClassifier(new Instances(training_data, 0));
+            Enumeration<Instance> enumeration = training_data.enumerateInstances();
+            while (enumeration.hasMoreElements()) {
+                classifier.updateClassifier(enumeration.nextElement());
+            }
+        } else{
+            this.classifier.buildClassifier(training_data);
+        }
     }
 
     /**
@@ -364,15 +374,21 @@ class Learner {
 
         try {
             logger.info("Building classifier {}...",
-                    this.classifier.getClassifier().getClass().getSimpleName());
-            this.classifier.buildClassifier(this.training_data);
-
-            this.loadData(false);
+                    this.classifier.getClass().getSimpleName());
+            this.trainClassifier(this.training_data);
         } catch (Exception e) {
             logger.fatal("Error while building classifier for new instances.", e);
 
             IOUtils.closeQuietly(fileWriter);
             IOUtils.closeQuietly(csvFilePrinter);
+
+            return;
+        }
+
+        try {
+            this.loadData(false);
+        } catch (Exception e) {
+            logger.fatal("Error while loading unlabeled data", e);
 
             return;
         }
@@ -383,10 +399,35 @@ class Learner {
         final Attribute attribute_utc_offset = this.classification_data.attribute(Storage.UTC_OFFSET);
         final Attribute attribute_timezone = this.classification_data.attribute(Storage.TIMEZONE);
 
+        Remove remove;
+        try {
+            remove = new Remove();
+            remove.setAttributeIndices(String.format("%d", attribute_id.index() + 1));
+            remove.setInputFormat(this.classification_data);
+        } catch (Exception e) {
+            logger.error("Error while building remove filter for unlabeled instances", e);
+            return;
+        }
+
         for (Instance i : this.classification_data) {
+            final long id = Double.valueOf(i.value(attribute_id)).longValue();
+
+            Instance trimmedInstance;
             try {
-                double classification = this.classifier.classifyInstance(i);
-                long id = Double.valueOf(i.value(attribute_id)).longValue();
+                remove.input(i);
+                remove.batchFinished();
+
+                Instances instances = remove.getOutputFormat();
+                instances.add(remove.output());
+
+                trimmedInstance = instances.firstInstance();
+            } catch (Exception e) {
+                logger.debug("Error while removing attribute from instance.", e);
+                return;
+            }
+
+            try {
+                double classification = this.classifier.classifyInstance(trimmedInstance);
                 Object[] values = {
                         id,
                         String.format(Constants.twitter_user_intent, id),
@@ -412,7 +453,7 @@ class Learner {
                  * we can't classify those instances.
                  */
                 logger.debug("Classification - id: {}, class: UNAVAILABLE",
-                        Double.valueOf(i.value(this.training_data.attribute(Storage.ID))).longValue()
+                        Double.valueOf(i.value(attribute_id)).longValue()
                 );
                 logger.debug("Exception stack trace", e);
             }
@@ -439,11 +480,11 @@ class Learner {
         try {
             if (evaluation_rate < 1) {
                 logger.info("Building and evaluating classifier {} with testing percentage {}...",
-                        this.classifier.getClassifier().getClass().getSimpleName(), evaluation_rate);
+                        this.classifier.getClass().getSimpleName(), evaluation_rate);
 
                 Map.Entry<Instances, Instances> data = splitTrainingTestData(evaluation_rate);
 
-                this.classifier.buildClassifier(data.getKey());
+                this.trainClassifier(data.getKey());
 
                 eval = new Evaluation(data.getKey());
                 eval.evaluateModel(this.classifier, data.getValue());
@@ -452,7 +493,7 @@ class Learner {
                 int rounded_evaluation_rate = Math.round(evaluation_rate);
 
                 logger.info("Building and evaluating classifier {} with {}-fold validation...",
-                        this.classifier.getClassifier().getClass().getSimpleName(),
+                        this.classifier.getClass().getSimpleName(),
                         rounded_evaluation_rate);
 
                 eval.crossValidateModel(

@@ -277,7 +277,7 @@ class Main {
                         System.out.println(
                                 bestEval.toSummaryString(
                                         String.format("\n==== Best Classifier: %s ====\n",
-                                                bestLearner.getClassifier().getClassifier().getClass().getSimpleName()),
+                                                bestLearner.getClassifier().getClass().getSimpleName()),
                                         false)
                         );
                     } else {
