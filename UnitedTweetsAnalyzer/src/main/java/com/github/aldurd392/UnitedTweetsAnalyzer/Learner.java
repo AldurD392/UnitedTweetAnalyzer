@@ -5,6 +5,7 @@ import org.apache.commons.csv.CSVPrinter;
 import org.apache.commons.io.IOUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
 import weka.classifiers.AbstractClassifier;
 import weka.classifiers.Classifier;
 import weka.classifiers.Evaluation;
@@ -23,6 +24,7 @@ import weka.core.Instance;
 import weka.core.Instances;
 import weka.core.SelectedTag;
 import weka.experiment.InstanceQuery;
+import weka.filters.Filter;
 import weka.filters.unsupervised.attribute.Remove;
 
 import java.io.FileWriter;
@@ -148,6 +150,30 @@ class Learner {
     public FilteredClassifier getClassifier() {
         return this.classifier;
     }
+    
+    /**
+     * Set up the instances in input, setting up the class attribute
+     * and if specified it apply the input filter.
+     *  @param instances to set up. 
+     *  @param filter if set applies the filter on the input instances.
+     *  
+     *  @return the set up instances.
+     */
+    public Instances setUpData(Instances instances, Filter filter) {
+    		
+    		Instances newInstances = instances;
+    		
+    		if (filter != null) {
+    			try {
+    				newInstances = Filter.useFilter(instances, filter);
+    			} catch(Exception e){
+    				logger.warn("Cannot filter data, Ignoring filter.", e);
+    			}
+    		}
+    		
+        newInstances.setClass(instances.attribute(Storage.COUNTRY));
+        return newInstances;
+    }
 
     /**
      * Load data from the DB and store them in instance variables.
@@ -159,26 +185,22 @@ class Learner {
      */
     private void loadData(boolean isTraining) throws Exception {
         InstanceQuery query = null;
-
+        
         try {
             query = new InstanceQuery();
             query.setUsername("nobody");
             query.setPassword("");
 
-            Instances instances;
             if (isTraining) {
                 query.setQuery(trainingQuery);
-                this.training_data = query.retrieveInstances();
-                instances = this.training_data;
+                this.training_data = setUpData(query.retrieveInstances(), null);
+                this.training_data.randomize(new Random());
+                
             } else {
                 query.setQuery(classificationQuery);
-                this.classification_data = query.retrieveInstances();
-                instances = this.classification_data;
+                this.classification_data = setUpData(query.retrieveInstances(), null);
             }
-
-            instances.setClass(instances.attribute(Storage.COUNTRY));
-
-            instances.randomize(new Random());
+            
         } catch (Exception e) {
             logger.error("Error while executing DB query", e);
             throw e;
@@ -265,9 +287,7 @@ class Learner {
             AbstractClassifier abstractClassifier = constructor.newInstance();
 
             Remove remove = new Remove();
-            Attribute idAttr = this.training_data.attribute(
-                    this.training_data.attribute(Storage.ID).index()
-            );
+            Attribute idAttr = this.training_data.attribute(Storage.ID);
             remove.setAttributeIndices(
                     String.format("%d", idAttr.index() + 1)
             );
