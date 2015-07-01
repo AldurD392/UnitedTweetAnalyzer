@@ -7,6 +7,26 @@ import twitter4j.*;
  * Connect to the Twitter stream and store the results.
  */
 class Streamer {
+
+    /**
+     * Different bias for the stream.
+     */
+    public enum Bias {
+        /**
+         * Sample from the whole stream.
+         */
+        all,
+        /**
+         * Require tweets to be within the bounding box,
+         * see {@link Constants#boundingBox}.
+         */
+        geo,
+        /**
+         * Require tweets to have an attached geo-location.
+         */
+        all_geo,
+    }
+
     private final static org.apache.logging.log4j.Logger logger = LogManager.getLogger(Streamer.class.getSimpleName());
 
 	private final Storage storage;
@@ -16,18 +36,16 @@ class Streamer {
      * Build the streamer and prepare the storage.
      * @param storage the storage in which stream Statues will be stored.
      */
-	public Streamer(Storage storage){
+	public Streamer(Storage storage) {
         assert (storage != null);
 		this.storage = storage;
 	}
 
     /**
      * Start listening to the stream and storing into the storage.
-     * @param locationBiased parameter indicating if the stream
-     *                       has to be filtered according to the USA
-     *                       bounding box or has to be a random 1% sample.
+     * @param bias parameter indicating how the stream should be filtered.
      */
-    public void startListening(boolean locationBiased) {
+    public void startListening(Bias bias) {
         this.twitterStream = new TwitterStreamFactory().getInstance();
 
         StatusListener listener = new StatusListener() {
@@ -64,12 +82,19 @@ class Streamer {
 
         twitterStream.addListener(listener);
 
-        if (locationBiased) {
-            FilterQuery filterQuery = new FilterQuery();
-            filterQuery.locations(Constants.boundingBox);
-            twitterStream.filter(filterQuery);
-        } else {
-            twitterStream.sample();
+        final FilterQuery filterQuery = new FilterQuery();
+        switch (bias) {
+            case geo:
+                filterQuery.locations(Constants.boundingBox);
+                twitterStream.filter(filterQuery);
+                break;
+            case all_geo:
+                filterQuery.locations(Constants.worldWideBox);
+                twitterStream.filter(filterQuery);
+                break;
+            case all:
+                twitterStream.sample();
+                break;
         }
     }
 

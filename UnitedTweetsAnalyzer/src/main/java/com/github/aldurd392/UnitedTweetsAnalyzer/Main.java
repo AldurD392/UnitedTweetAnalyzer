@@ -47,16 +47,6 @@ class Main {
     };
 
     /**
-     * While storing we can bias the stream.
-     * Geo will filter tweets according to a specific bounding box.
-     * All will sample the total stream.
-     */
-    private static final String[] STREAM_BIAS_TYPE = {
-            "geo",
-            "all"
-    };
-
-    /**
      * When specifying all as the learner name,
      * we'll launch each different learner and
      * we'll return the best.
@@ -104,7 +94,7 @@ class Main {
 
         Option stream_bias = Option.builder(STREAM_BIAS)
                 .longOpt("stream_bias")
-                .desc("bias applied to the stream " + Arrays.toString(STREAM_BIAS_TYPE))
+                .desc("bias applied to the stream " + Arrays.toString(Streamer.Bias.values()))
                 .hasArg(true)
                 .required(false)
                 .type(String.class)
@@ -204,8 +194,6 @@ class Main {
 
                 Geography geography = new Geography(shapefile_path);
                 final Storage storage = new Storage(geography, DEFAULT_DATABASE_PATH);
-
-                final String streaming_bias = commandLine.getOptionValue(STREAM_BIAS, STREAM_BIAS_TYPE[0]);
                 final Streamer streamer = new Streamer(storage);
 
                 // While shutting down we'll close the storage.
@@ -222,7 +210,16 @@ class Main {
                         }
                 });
 
-                streamer.startListening(streaming_bias.equals(STREAM_BIAS_TYPE[0]));
+                final String streaming_bias = commandLine.getOptionValue(STREAM_BIAS, Streamer.Bias.geo.toString());
+                Streamer.Bias bias = Streamer.Bias.geo;
+
+                try {
+                    bias = Streamer.Bias.valueOf(streaming_bias);
+                } catch (IllegalArgumentException e) {
+                    logger.warn("Illegal bias type. Falling back to: " + Streamer.Bias.geo.toString());
+                }
+
+                streamer.startListening(bias);
             }
             /**
              * In case of a "learn" or "classify" task we need the classifier name.

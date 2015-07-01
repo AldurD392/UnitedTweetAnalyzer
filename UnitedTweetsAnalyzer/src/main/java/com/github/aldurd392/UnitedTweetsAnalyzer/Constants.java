@@ -22,6 +22,14 @@ class Constants {
     };
 
     /**
+     * A bounding box containing the whole world.
+     * Useful to retrieve only tweets with an attached location.
+     */
+    public final static double[][] worldWideBox = {
+            {-180, -90}, {180, 90}
+    };
+
+    /**
      * The same bounding box as en EnvelopeBox,
      * used by the JTS system.
      */
