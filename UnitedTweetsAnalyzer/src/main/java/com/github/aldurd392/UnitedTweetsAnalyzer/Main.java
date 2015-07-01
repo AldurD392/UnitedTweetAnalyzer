@@ -255,14 +255,14 @@ class Main {
 
                     Evaluation eval;
                     if (classifier_name.equals(LEARN_ALL)) {
+                        if (commandLine.hasOption(LEARNER_CL)) {
+                            logger.warn("-" + LEARNER_CL + " ignored with -" + TASK + " " + LEARN_ALL);
+                        }
                         Evaluation bestEval = null;
                         Learner bestLearner = null;
 
                         for (String classifier : Learner.classifiers.keySet()) {
-                            Learner learner = new Learner(
-                                    classifier,
-                                    commandLine.getOptionValue(LEARNER_CL, null)
-                            );
+                            Learner learner = new Learner(classifier, null);
                             eval = learner.buildAndEvaluate(evaluation_rate);
 
                             logger.info(eval.toSummaryString("Results\n", false));
