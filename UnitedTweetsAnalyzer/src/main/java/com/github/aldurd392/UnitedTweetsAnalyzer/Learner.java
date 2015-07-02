@@ -225,9 +225,10 @@ class Learner {
      */
     private void setupLearner() {
         Classifier classifier = this.classifier.getClassifier();
+        logger.info("Applying default configuration to {}", classifier.getClass().getSimpleName());
+
         if (classifier instanceof J48) {
             J48 j48 = (J48) classifier;
-            logger.info("Configuring {}...", J48.class.getSimpleName());
 
             j48.setCollapseTree(false);
             j48.setBinarySplits(false);
@@ -239,7 +240,6 @@ class Learner {
             j48.setSubtreeRaising(false);
         } else if (classifier instanceof LibSVM) {
             LibSVM libSVM = (LibSVM) classifier;
-            logger.info("Configuring {}...", LibSVM.class.getSimpleName());
 
             libSVM.setCacheSize(512); // MB
             libSVM.setNormalize(true);
@@ -249,14 +249,12 @@ class Learner {
             libSVM.setSVMType(new SelectedTag(LibSVM.SVMTYPE_C_SVC, LibSVM.TAGS_SVMTYPE));
         } else if (classifier instanceof NaiveBayes) {
             NaiveBayes naiveBayes = (NaiveBayes) classifier;
-            logger.info("Configuring {}...", NaiveBayes.class.getSimpleName());
 
             // Configure NaiveBayes
             naiveBayes.setUseKernelEstimator(false);
             naiveBayes.setUseSupervisedDiscretization(false);
         } else if (classifier instanceof RandomForest) {
             RandomForest rndForest = (RandomForest) classifier;
-            logger.info("Configuring {}...", RandomForest.class.getSimpleName());
 
             // Configure RandomForest
             rndForest.setNumExecutionSlots(5);
@@ -264,7 +262,6 @@ class Learner {
             rndForest.setMaxDepth(3);
         } else if (classifier instanceof MultilayerPerceptron) {
             MultilayerPerceptron perceptron = (MultilayerPerceptron) classifier;
-            logger.info("Configuring {}...", MultilayerPerceptron.class.getSimpleName());
 
             // Configure perceptron
             perceptron.setAutoBuild(true);
@@ -324,6 +321,12 @@ class Learner {
         logger.debug("Classifier {} correctly created.", this.classifier.getClassifier().getClass().getSimpleName());
     }
 
+    /**
+     * If evaluating by using a percentage of the dataset as test,
+     * this function split the data as required.
+     * @param percentage_split parameter indicating the percentage of test data.
+     * @return An entry containing, in order, training and test sets.
+     */
     private Map.Entry<Instances, Instances> splitTrainingTestData(float percentage_split) {
         assert (percentage_split > 0 && percentage_split < 1);
 
