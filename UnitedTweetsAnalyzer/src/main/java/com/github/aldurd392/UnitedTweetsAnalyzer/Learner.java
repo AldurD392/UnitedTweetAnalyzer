@@ -132,7 +132,7 @@ class Learner {
             "id", "profile_url", "location", "lang", "utc_offset", "timezone", "country",
     };
 
-    final static Pattern re_spaces = Pattern.compile("\\s+");
+    private final static Pattern re_spaces = Pattern.compile("\\s+");
 
     private Instances training_data = null;
     private Instances classification_data = null;
@@ -168,7 +168,7 @@ class Learner {
      *  
      *  @return the set up instances.
      */
-    public Instances setUpData(Instances instances, Filter filter) {
+    private Instances setUpData(Instances instances, Filter filter) {
     		
     		Instances newInstances = instances;
     		
