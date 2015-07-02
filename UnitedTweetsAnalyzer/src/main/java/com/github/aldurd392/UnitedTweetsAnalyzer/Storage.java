@@ -207,6 +207,8 @@ class Storage {
      * <p>
      * We need to do this because otherwise SQLite would
      * lose the column type.
+     *
+     * @throws SQLException in case of exception while executing the query.
      */
     public void prepareClassificationView() throws SQLException {
         try (Statement stmt = this.c.createStatement()) {
