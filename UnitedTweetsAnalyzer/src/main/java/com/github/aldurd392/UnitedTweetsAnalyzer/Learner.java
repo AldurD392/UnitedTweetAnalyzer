@@ -5,9 +5,7 @@ import org.apache.commons.csv.CSVPrinter;
 import org.apache.commons.io.IOUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
 import weka.classifiers.AbstractClassifier;
-import weka.classifiers.Classifier;
 import weka.classifiers.Evaluation;
 import weka.classifiers.bayes.NaiveBayes;
 import weka.classifiers.bayes.NaiveBayesUpdateable;
@@ -16,7 +14,6 @@ import weka.classifiers.functions.MultilayerPerceptron;
 import weka.classifiers.functions.SMO;
 import weka.classifiers.lazy.KStar;
 import weka.classifiers.meta.AdaBoostM1;
-import weka.classifiers.meta.FilteredClassifier;
 import weka.classifiers.rules.PART;
 import weka.classifiers.trees.*;
 import weka.core.Attribute;
@@ -40,8 +37,6 @@ import java.util.regex.Pattern;
  * or classify unknown instances.
  */
 class Learner {
-    private final static Logger logger = LogManager.getLogger(Learner.class.getSimpleName());
-
     /**
      * This map will let you add other classifiers to this class.
      * You can specify all those classifiers that inherit from AbstractClassifier
@@ -49,6 +44,63 @@ class Learner {
      * @see AbstractClassifier
      */
     public final static Map<String, Class<? extends AbstractClassifier>> classifiers;
+    private final static Logger logger = LogManager.getLogger(Learner.class.getSimpleName());
+    /**
+     * Load from the DB all the labeled instances.
+     * i.e. users who have at least a tweet labeled
+     * with an associated country.
+     */
+    private final static String trainingQuery = String.format(
+            "SELECT %s.%s, %s.%s, %s.%s, %s.%s, %s.%s " +
+                    "FROM %s, %s " +
+                    "WHERE %s.%s = %s.%s",
+            Storage.TABLE_USER, Storage.LANG,
+            Storage.TABLE_USER, Storage.LOCATION,
+            Storage.TABLE_USER, Storage.UTC_OFFSET,
+            Storage.TABLE_USER, Storage.TIMEZONE,
+            Storage.TABLE_TWEET, Storage.COUNTRY,
+            Storage.TABLE_USER, Storage.TABLE_TWEET,
+            Storage.TABLE_USER, Storage.ID, Storage.TABLE_TWEET, Storage.USER_ID);
+    /**
+     * Load from the DB all the unlabeled instances.
+     * Those instances will be used for the unsupervised
+     * machine learning task.
+     * <p/>
+     * We take a sample of the unlabeled data.
+     * <p/>
+     * Please note that the format retrieved by this query
+     * must be equal to the one retrieved by trainingQuery.
+     */
+    private final static String classificationQuery = String.format(
+            "SELECT %s.%s ,%s.%s, %s.%s, %s.%s, %s.%s, NULL as %s " +
+                    "FROM %s " +
+                    "WHERE %s not in " +
+                    "(" +
+                    "SELECT %s.%s " +
+                    "FROM %s, %s " +
+                    "WHERE %s.%s = %s.%s" +
+                    ")" +
+                    "ORDER BY RANDOM()" +
+                    "LIMIT %d",
+            Storage.TABLE_USER, Storage.ID,
+            Storage.TABLE_USER, Storage.LANG,
+            Storage.TABLE_USER, Storage.LOCATION,
+            Storage.TABLE_USER, Storage.UTC_OFFSET,
+            Storage.TABLE_USER, Storage.TIMEZONE,
+            Storage.COUNTRY,
+            Storage.TABLE_USER,
+            Storage.ID,
+            Storage.TABLE_USER, Storage.ID,
+            Storage.TABLE_USER, Storage.TABLE_TWEET,
+            Storage.TABLE_USER, Storage.ID, Storage.TABLE_TWEET, Storage.USER_ID,
+            Constants.classification_limit
+    );
+    private static final char CSV_DELIMITER = ';';
+    private static final Object[] CSV_FILE_HEADER = {
+            "id", "profile_url", "location", "lang", "utc_offset", "timezone", "country",
+    };
+    private final static Pattern re_spaces = Pattern.compile("\\s+");
+
     static {
         HashMap<String, Class<? extends AbstractClassifier>> map = new HashMap<>();
 
@@ -73,76 +125,15 @@ class Learner {
         classifiers = Collections.unmodifiableMap(map);
     }
 
-
-    /**
-     * Load from the DB all the labeled instances.
-     * i.e. users who have at least a tweet labeled
-     * with an associated country.
-     */
-    private final static String trainingQuery = String.format(
-            "SELECT %s.%s, %s.%s, %s.%s, %s.%s, %s.%s, %s.%s " +
-                    "FROM %s, %s " +
-                    "WHERE %s.%s = %s.%s",
-            Storage.TABLE_USER, Storage.ID,
-            Storage.TABLE_USER, Storage.LANG,
-            Storage.TABLE_USER, Storage.LOCATION,
-            Storage.TABLE_USER, Storage.UTC_OFFSET,
-            Storage.TABLE_USER, Storage.TIMEZONE,
-            Storage.TABLE_TWEET, Storage.COUNTRY,
-            Storage.TABLE_USER, Storage.TABLE_TWEET,
-            Storage.TABLE_USER, Storage.ID, Storage.TABLE_TWEET, Storage.USER_ID);
-
-    /**
-     * Load from the DB all the unlabeled instances.
-     * Those instances will be used for the unsupervised
-     * machine learning task.
-     * <p>
-     * We take a sample of the unlabeled data.
-     * <p>
-     * Please note that the format retrieved by this query
-     * must be equal to the one retrieved by trainingQuery.
-     */
-    private final static String classificationQuery = String.format(
-            "SELECT %s.%s ,%s.%s, %s.%s, %s.%s, %s.%s, NULL as %s " +
-                    "FROM %s " +
-                    "WHERE %s not in " +
-                    "(" +
-                    "SELECT %s.%s " +
-                    "FROM %s, %s " +
-                    "WHERE %s.%s = %s.%s" +
-                    ")" +
-                    "ORDER BY RANDOM()" +
-                    "LIMIT %d" ,
-            Storage.TABLE_USER, Storage.ID,
-            Storage.TABLE_USER, Storage.LANG,
-            Storage.TABLE_USER, Storage.LOCATION,
-            Storage.TABLE_USER, Storage.UTC_OFFSET,
-            Storage.TABLE_USER, Storage.TIMEZONE,
-            Storage.COUNTRY,
-            Storage.TABLE_USER,
-            Storage.ID,
-            Storage.TABLE_USER, Storage.ID,
-            Storage.TABLE_USER, Storage.TABLE_TWEET,
-            Storage.TABLE_USER, Storage.ID, Storage.TABLE_TWEET, Storage.USER_ID,
-            Constants.classification_limit
-    );
-
-    private static final char CSV_DELIMITER = ';';
-    private static final Object[] CSV_FILE_HEADER = {
-            "id", "profile_url", "location", "lang", "utc_offset", "timezone", "country",
-    };
-
-    private final static Pattern re_spaces = Pattern.compile("\\s+");
-
     private Instances training_data = null;
     private Instances classification_data = null;
-    private FilteredClassifier classifier = null;
+    private AbstractClassifier classifier = null;
 
     /**
      * Build a new learner
      *
      * @param classifier_name the name of the classifier used by the learner.
-     * @param cl_config Weka command line configuration for the learner.
+     * @param cl_config       Weka command line configuration for the learner.
      * @throws Exception on error.
      */
     public Learner(String classifier_name, String cl_config) throws Exception {
@@ -152,34 +143,26 @@ class Learner {
         this.classifierFactory(classifier_name, cl_config);
     }
 
-    public Instances getTrainingData() {
-        return this.training_data;
-    }
-
-    public FilteredClassifier getClassifier() {
-        return this.classifier;
-    }
-    
     /**
      * Set up the instances in input, setting up the class attribute
      * and if specified it apply the input filter.
-     *  @param instances to set up. 
-     *  @param filter if set applies the filter on the input instances.
-     *  
-     *  @return the set up instances.
+     *
+     * @param instances to set up.
+     * @param filter    if set applies the filter on the input instances.
+     * @return the set up instances.
      */
     private Instances setUpData(Instances instances, Filter filter) {
-    		
-    		Instances newInstances = instances;
-    		
-    		if (filter != null) {
-    			try {
-    				newInstances = Filter.useFilter(instances, filter);
-    			} catch(Exception e){
-    				logger.warn("Cannot filter data, Ignoring filter.", e);
-    			}
-    		}
-    		
+
+        Instances newInstances = instances;
+
+        if (filter != null) {
+            try {
+                newInstances = Filter.useFilter(instances, filter);
+            } catch (Exception e) {
+                logger.warn("Cannot filter data, Ignoring filter.", e);
+            }
+        }
+
         newInstances.setClass(instances.attribute(Storage.COUNTRY));
         return newInstances;
     }
@@ -194,7 +177,7 @@ class Learner {
      */
     private void loadData(boolean isTraining) throws Exception {
         InstanceQuery query = null;
-        
+
         try {
             query = new InstanceQuery();
             query.setUsername("nobody");
@@ -204,12 +187,12 @@ class Learner {
                 query.setQuery(trainingQuery);
                 this.training_data = setUpData(query.retrieveInstances(), null);
                 this.training_data.randomize(new Random());
-                
+
             } else {
                 query.setQuery(classificationQuery);
                 this.classification_data = setUpData(query.retrieveInstances(), null);
             }
-            
+
         } catch (Exception e) {
             logger.error("Error while executing DB query", e);
             throw e;
@@ -224,11 +207,10 @@ class Learner {
      * Setup the classifier parameters'.
      */
     private void setupLearner() {
-        Classifier classifier = this.classifier.getClassifier();
-        logger.info("Applying default configuration to {}", classifier.getClass().getSimpleName());
+        logger.info("Applying default configuration to {}", this.classifier.getClass().getSimpleName());
 
-        if (classifier instanceof J48) {
-            J48 j48 = (J48) classifier;
+        if (this.classifier instanceof J48) {
+            J48 j48 = (J48) this.classifier;
 
             j48.setCollapseTree(false);
             j48.setBinarySplits(false);
@@ -238,8 +220,8 @@ class Learner {
             j48.setUseLaplace(true);
             j48.setNumFolds(5);
             j48.setSubtreeRaising(false);
-        } else if (classifier instanceof LibSVM) {
-            LibSVM libSVM = (LibSVM) classifier;
+        } else if (this.classifier instanceof LibSVM) {
+            LibSVM libSVM = (LibSVM) this.classifier;
 
             libSVM.setCacheSize(512); // MB
             libSVM.setNormalize(true);
@@ -247,21 +229,21 @@ class Learner {
             libSVM.setKernelType(new SelectedTag(LibSVM.KERNELTYPE_POLYNOMIAL, LibSVM.TAGS_KERNELTYPE));
             libSVM.setDegree(3);
             libSVM.setSVMType(new SelectedTag(LibSVM.SVMTYPE_C_SVC, LibSVM.TAGS_SVMTYPE));
-        } else if (classifier instanceof NaiveBayes) {
-            NaiveBayes naiveBayes = (NaiveBayes) classifier;
+        } else if (this.classifier instanceof NaiveBayes) {
+            NaiveBayes naiveBayes = (NaiveBayes) this.classifier;
 
             // Configure NaiveBayes
             naiveBayes.setUseKernelEstimator(false);
             naiveBayes.setUseSupervisedDiscretization(false);
-        } else if (classifier instanceof RandomForest) {
-            RandomForest rndForest = (RandomForest) classifier;
+        } else if (this.classifier instanceof RandomForest) {
+            RandomForest rndForest = (RandomForest) this.classifier;
 
             // Configure RandomForest
             rndForest.setNumExecutionSlots(5);
             rndForest.setNumTrees(50);
             rndForest.setMaxDepth(3);
-        } else if (classifier instanceof MultilayerPerceptron) {
-            MultilayerPerceptron perceptron = (MultilayerPerceptron) classifier;
+        } else if (this.classifier instanceof MultilayerPerceptron) {
+            MultilayerPerceptron perceptron = (MultilayerPerceptron) this.classifier;
 
             // Configure perceptron
             perceptron.setAutoBuild(true);
@@ -275,8 +257,8 @@ class Learner {
      * Instantiate a classifier from it's name.
      *
      * @param classifier_name the name of the classifier to be instantiated.
-     * @param cl_config Weka configuration for the learner.
-     *                  This overrides the setup in {@link #setupLearner()}.
+     * @param cl_config       Weka configuration for the learner.
+     *                        This overrides the setup in {@link #setupLearner()}.
      * @throws Exception on instantiation error.
      */
     private void classifierFactory(String classifier_name, String cl_config) throws Exception {
@@ -298,10 +280,7 @@ class Learner {
                     String.format("%d", idAttr.index() + 1)
             );
 
-            this.classifier = new FilteredClassifier();
-            this.classifier.setFilter(remove);
-
-            this.classifier.setClassifier(abstractClassifier);
+            this.classifier = abstractClassifier;
             setupLearner();
 
             if (cl_config != null) {
@@ -318,12 +297,13 @@ class Learner {
             throw e;
         }
 
-        logger.debug("Classifier {} correctly created.", this.classifier.getClassifier().getClass().getSimpleName());
+        logger.debug("Classifier {} correctly created.", this.classifier.getClass().getSimpleName());
     }
 
     /**
      * If evaluating by using a percentage of the dataset as test,
      * this function split the data as required.
+     *
      * @param percentage_split parameter indicating the percentage of test data.
      * @return An entry containing, in order, training and test sets.
      */
@@ -367,7 +347,7 @@ class Learner {
 
         try {
             logger.info("Building classifier {}...",
-                    this.classifier.getClassifier().getClass().getSimpleName());
+                    this.classifier.getClass().getSimpleName());
             this.classifier.buildClassifier(this.training_data);
 
             this.loadData(false);
@@ -442,7 +422,7 @@ class Learner {
         try {
             if (evaluation_rate < 1) {
                 logger.info("Building and evaluating classifier {} with testing percentage {}...",
-                        this.classifier.getClassifier().getClass().getSimpleName(), evaluation_rate);
+                        this.classifier.getClass().getSimpleName(), evaluation_rate);
 
                 Map.Entry<Instances, Instances> data = splitTrainingTestData(evaluation_rate);
 
@@ -455,7 +435,7 @@ class Learner {
                 int rounded_evaluation_rate = Math.round(evaluation_rate);
 
                 logger.info("Building and evaluating classifier {} with {}-fold validation...",
-                        this.classifier.getClassifier().getClass().getSimpleName(),
+                        this.classifier.getClass().getSimpleName(),
                         rounded_evaluation_rate);
 
                 eval.crossValidateModel(
@@ -470,5 +450,13 @@ class Learner {
         }
 
         return eval;
+    }
+
+    public Instances getTrainingData() {
+        return this.training_data;
+    }
+
+    public AbstractClassifier getClassifier() {
+        return this.classifier;
     }
 }
