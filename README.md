@@ -160,8 +160,24 @@ Total Number of Instances           777354
 As you can see, we've got a pretty accuracy of 66%.
 
 ### Hoeffding Tree results
-This classifier performs similarly to Naive Bayes, on which it internally relies. 
+This classifier performs similarly to (slightly better than, actually) Naive Bayes, on which it internally relies.
 Supplying even more data to this classifier would probably improve the results.
+
+### Adaboost
+Adaboost is faster, but produces slightly worst results:
+
+```
+Correctly Classified Instances      377407               48.5502 %
+Incorrectly Classified Instances    399947               51.4498 %
+Kappa statistic                          0
+Mean absolute error                      0.0258
+Root mean squared error                  0.1136
+Relative absolute error                 85.9708 %
+Root relative squared error             92.7215 %
+Coverage of cases (0.95 level)          95.9657 %
+Mean rel. region size (0.95 level)      44.1019 %
+Total Number of Instances           777354
+```
 
 ### Other classifiers
 Our system out-of-the-box includes a great number of classifiers and can be easily extended.
