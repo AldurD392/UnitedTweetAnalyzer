@@ -21,7 +21,40 @@ class Storage {
     private final static String JDBC_PREFIX = "jdbc:sqlite:";
     private final static String JDBC_DRIVER = "org.sqlite.JDBC";
 
-    public final static String CLASSIFICATION_VIEW = "classification_view";
+    private final static String CLASSIFICATION_VIEW = "classification_view";
+
+    /**
+     * Load from the DB all the labeled instances.
+     * i.e. users who have at least a tweet labeled
+     * with an associated country.
+     */
+    public final static String TRAINING_QUERY = String.format(
+            "SELECT %s.%s, %s.%s, %s.%s, %s.%s, %s.%s " +
+                    "FROM %s, %s " +
+                    "WHERE %s.%s = %s.%s",
+            Storage.TABLE_USER, Storage.LANG,
+            Storage.TABLE_USER, Storage.LOCATION,
+            Storage.TABLE_USER, Storage.UTC_OFFSET,
+            Storage.TABLE_USER, Storage.TIMEZONE,
+            Storage.TABLE_TWEET, Storage.COUNTRY,
+            Storage.TABLE_USER, Storage.TABLE_TWEET,
+            Storage.TABLE_USER, Storage.ID, Storage.TABLE_TWEET, Storage.USER_ID);
+
+    /**
+     * Load from the DB both the training and the unlabeled instances.
+     * Those instances will be used for the unsupervised
+     * machine learning task.
+     * <p>
+     * We take a sample of the unlabeled data.
+     * <p>
+     * We need to load all those data because some classifiers need
+     * to know the whole universe of nominal data.
+     * In addition, we load the data with the ID, in order to
+     * manually check the classification.
+     * Nonetheless, we don't wanna use ID while classifying:
+     * we thus filter the IDs away from the training data.
+     */
+    public final static String CLASSIFICATION_QUERY = "SELECT * FROM " + Storage.CLASSIFICATION_VIEW;
 
     public final static String ID = "ID";
 
@@ -168,6 +201,56 @@ class Storage {
     }
 
     /**
+     * We're creating a View (a virtual table inside the database),
+     * that we'll use to retrieve the union of
+     * training instances and unlabeled data.
+     * <p>
+     * We need to do this because otherwise SQLite would
+     * lose the column type.
+     */
+    public void prepareClassificationView() throws SQLException {
+        try (Statement stmt = this.c.createStatement()) {
+            String classificationView = String.format(
+                    "CREATE VIEW %s AS " +
+                            "SELECT * " +
+                            "FROM (SELECT " +
+                            "%s.%s, " +
+                            "%s.%s, %s.%s, " +
+                            "%s.%s, %s.%s, " +
+                            "NULL as %s " +
+                            "FROM %s " +
+                            "WHERE %s.%s not in " +
+                            "(SELECT %s.%s FROM %s) " +
+                            "ORDER BY RANDOM() LIMIT 0, %s) " +
+                            "UNION " +
+                            "SELECT %s.%s, %s.%s, %s.%s, " +
+                            "%s.%s, %s.%s, " +
+                            "%s.%s " +
+                            "FROM %s, %s " +
+                            "WHERE %s.%s = %s.%s",
+                    Storage.CLASSIFICATION_VIEW,
+                    Storage.TABLE_USER, Storage.ID,
+                    Storage.TABLE_USER, Storage.LANG, Storage.TABLE_USER, Storage.LOCATION,
+                    Storage.TABLE_USER, Storage.UTC_OFFSET, Storage.TABLE_USER, Storage.TIMEZONE,
+                    Storage.COUNTRY,
+                    Storage.TABLE_USER,
+                    Storage.TABLE_USER, Storage.ID,
+                    Storage.TABLE_TWEET, Storage.USER_ID, Storage.TABLE_TWEET,
+                    Constants.classification_limit,
+                    Storage.TABLE_USER, Storage.ID,
+                    Storage.TABLE_USER, Storage.LANG,
+                    Storage.TABLE_USER, Storage.LOCATION,
+                    Storage.TABLE_USER, Storage.UTC_OFFSET,
+                    Storage.TABLE_USER, Storage.TIMEZONE,
+                    Storage.TABLE_TWEET, Storage.COUNTRY,
+                    Storage.TABLE_USER, Storage.TABLE_TWEET,
+                    Storage.TABLE_USER, Storage.ID, Storage.TABLE_TWEET, Storage.USER_ID
+            );
+            stmt.executeUpdate(classificationView);
+        }
+    }
+
+    /**
      * We stem the user Location field.
      * It is a user-inserted string, that could differ from user to user.
      * It is not parseable and it won't probably help us during classification.
@@ -239,10 +322,12 @@ class Storage {
         }
         */
 
-        String insert = "INSERT INTO " + TABLE_USER +
-                String.format(" (%s, %s, %s, %s, %s, %s) ",
-                        ID, USERNAME, LANG, LOCATION, UTC_OFFSET, TIMEZONE
-                ) + "VALUES (?, ?, ?, ?, ?, ?);";
+        String insert = String.format(
+                "INSERT INTO %s " +
+                        "(%s, %s, %s, %s, %s, %s) " +
+                        "VALUES (?, ?, ?, ?, ?, ?);",
+                TABLE_USER,
+                ID, USERNAME, LANG, LOCATION, UTC_OFFSET, TIMEZONE);
         try (PreparedStatement stmt = this.c.prepareStatement(insert)) {
             stmt.setLong(1, user.getId());
             stmt.setString(2, user.getName());
@@ -382,26 +467,6 @@ class Storage {
             }
         } finally {
             this.lock.unlock();
-        }
-    }
-
-    public void prepareClassificationView() throws SQLException {
-        try (Statement stmt = this.c.createStatement()) {
-            String classificationView =  "" +
-                    "CREATE VIEW " + Storage.CLASSIFICATION_VIEW + " AS " +
-                    "SELECT * " +
-                    "FROM (SELECT USER.ID, " +
-                    "USER.LANG, USER.LOCATION, " +
-                    "USER.UTC_OFFSET, USER.TIMEZONE, " +
-                    "NULL as COUNTRY " +
-                    "FROM USER WHERE USER.ID not in " +
-                    "(SELECT TWEET.USER_ID FROM TWEET) " +
-                    "ORDER BY RANDOM() LIMIT 0, 200) " +
-                    "UNION SELECT USER.ID, USER.LANG, USER.LOCATION, " +
-                    "USER.UTC_OFFSET, USER.TIMEZONE, " +
-                    "TWEET.COUNTRY FROM USER, " +
-                    "TWEET WHERE USER.ID = TWEET.USER_ID";
-            stmt.executeUpdate(classificationView);
         }
     }
 

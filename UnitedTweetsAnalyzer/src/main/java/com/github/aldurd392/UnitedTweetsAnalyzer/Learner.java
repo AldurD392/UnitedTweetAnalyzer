@@ -44,6 +44,7 @@ class Learner {
      * @see AbstractClassifier
      */
     public final static Map<String, Class<? extends AbstractClassifier>> classifiers;
+
     static {
         HashMap<String, Class<? extends AbstractClassifier>> map = new HashMap<>();
 
@@ -68,40 +69,6 @@ class Learner {
         classifiers = Collections.unmodifiableMap(map);
     }
 
-
-    /**
-     * Load from the DB all the labeled instances.
-     * i.e. users who have at least a tweet labeled
-     * with an associated country.
-     */
-    private final static String trainingQuery = String.format(
-            "SELECT %s.%s, %s.%s, %s.%s, %s.%s, %s.%s " +
-                    "FROM %s, %s " +
-                    "WHERE %s.%s = %s.%s",
-            Storage.TABLE_USER, Storage.LANG,
-            Storage.TABLE_USER, Storage.LOCATION,
-            Storage.TABLE_USER, Storage.UTC_OFFSET,
-            Storage.TABLE_USER, Storage.TIMEZONE,
-            Storage.TABLE_TWEET, Storage.COUNTRY,
-            Storage.TABLE_USER, Storage.TABLE_TWEET,
-            Storage.TABLE_USER, Storage.ID, Storage.TABLE_TWEET, Storage.USER_ID);
-
-    /**
-     * Load from the DB both the training and the unlabeled instances.
-     * Those instances will be used for the unsupervised
-     * machine learning task.
-     * <p>
-     * We take a sample of the unlabeled data.
-     * <p>
-     * We need to load all those data because some classifiers need
-     * to know the whole universe of nominal data.
-     * In addition, we load the data with the ID, in order to
-     * manually check the classification.
-     * Nonetheless, we don't wanna use ID while classifying:
-     * we thus filter the IDs away from the training data.
-     */
-    private final static String classificationQuery = "SELECT * FROM " + Storage.CLASSIFICATION_VIEW;
-
     private static final char CSV_DELIMITER = ';';
     private static final Object[] CSV_FILE_HEADER = {
             "id", "profile_url", "location", "lang", "utc_offset", "timezone", "country",
@@ -119,7 +86,7 @@ class Learner {
      */
     private Instances training_data = null;
     /**
-     * We'll keep the unlabele instances here.
+     * We'll keep the unlabeled instances here.
      */
     private Instances classification_data = null;
     /**
@@ -131,7 +98,7 @@ class Learner {
      * Build a new learner
      *
      * @param classifier_name the name of the classifier used by the learner.
-     * @param cl_config Weka command line configuration for the learner.
+     * @param cl_config       Weka command line configuration for the learner.
      * @throws Exception on error.
      */
     public Learner(String classifier_name, String cl_config) throws Exception {
@@ -147,14 +114,14 @@ class Learner {
     public AbstractClassifier getClassifier() {
         return this.classifier;
     }
-    
+
     /**
      * Set up the instances in input, setting up the class attribute
      * and if specified it apply the input filter.
-     *  @param instances to set up. 
-     *  @param filter if set applies the filter on the input instances.
-     *  
-     *  @return the set up instances.
+     *
+     * @param instances to set up.
+     * @param filter    if set applies the filter on the input instances.
+     * @return the set up instances.
      */
     public Instances setUpData(Instances instances, Filter filter) {
         Instances newInstances = instances;
@@ -162,7 +129,7 @@ class Learner {
         if (filter != null) {
             try {
                 newInstances = Filter.useFilter(instances, filter);
-            } catch(Exception e){
+            } catch (Exception e) {
                 logger.warn("Cannot filter data. Ignoring supplied filter.", e);
             }
         }
@@ -174,7 +141,7 @@ class Learner {
     /**
      * Load data from the DB and store them in instance variables.
      * Note that we always randomize the order of the retrieved instances.
-     *
+     * <p>
      * When we want to classify unlabeled instances, we have to make sure that
      * the classifier knows the entire universe of attribute's values.
      * Because of this, we load with a single query all the data we needs,
@@ -192,17 +159,15 @@ class Learner {
         InstanceQuery query = null;
         try {
             query = new InstanceQuery();
-            query.setUsername("nobody");
-            query.setPassword("");
 
             if (isTraining) {
-                query.setQuery(trainingQuery);
+                query.setQuery(Storage.TRAINING_QUERY);
                 Instances instances = query.retrieveInstances();
 
                 this.training_data = setUpData(instances, null);
                 this.training_data.randomize(new Random());
             } else {
-                query.setQuery(classificationQuery);
+                query.setQuery(Storage.CLASSIFICATION_QUERY);
                 Instances universe = query.retrieveInstances();
 
                 /**
@@ -210,8 +175,7 @@ class Learner {
                  * training and unlabeled.
                  */
                 universe = setUpData(universe, null);
-                assert (universe.attribute(Storage.UTC_OFFSET).type() == 1): "Got bad types from database";
-
+                assert (universe.attribute(Storage.UTC_OFFSET).type() == 1) : "Got bad types from database";
 
                 this.training_data = new Instances(universe, universe.numInstances() - 200);
                 this.classification_data = new Instances(universe, 200);
@@ -232,12 +196,12 @@ class Learner {
                     }
                 }
 
-                assert (this.classification_data.numInstances() == Constants.classification_limit):
-                    "Bad number of classification data (" +
-                            this.classification_data.numInstances() +
-                            "), filter is likely to be not working.";
+                assert (this.classification_data.numInstances() == Constants.classification_limit) :
+                        "Bad number of classification data (" +
+                                this.classification_data.numInstances() +
+                                "), filter is likely to be not working.";
 
-                assert this.training_data.equalHeadersMsg(this.classification_data) == null:
+                assert this.training_data.equalHeadersMsg(this.classification_data) == null :
                         "Bad instances headers: " + this.training_data.equalHeadersMsg(this.classification_data);
 
                 /**
@@ -249,7 +213,7 @@ class Learner {
                 this.training_data = Filter.useFilter(this.training_data, remove);
                 this.training_data.randomize(new Random());
 
-                assert this.training_data.numAttributes() == this.classification_data.numAttributes() - 1:
+                assert this.training_data.numAttributes() == this.classification_data.numAttributes() - 1 :
                         "Training data filtering is not working, bad number of attributes.";
             }
         } catch (Exception e) {
@@ -319,8 +283,8 @@ class Learner {
      * Instantiate a classifier from it's name.
      *
      * @param classifier_name the name of the classifier to be instantiated.
-     * @param cl_config Weka configuration for the learner.
-     *                  This overrides the setup in {@link #setupLearner()}.
+     * @param cl_config       Weka configuration for the learner.
+     *                        This overrides the setup in {@link #setupLearner()}.
      * @throws Exception on instantiation error.
      */
     private void classifierFactory(String classifier_name, String cl_config) throws Exception {
@@ -359,6 +323,7 @@ class Learner {
     /**
      * If evaluating by using a percentage of the dataset as test,
      * this function split the data as required.
+     *
      * @param percentage_split parameter indicating the percentage of test data.
      * @return An entry containing, in order, training and test sets.
      */
@@ -376,10 +341,11 @@ class Learner {
 
     /**
      * Train the classifier on the given instances.
+     *
      * @param training_data the instances to use.
      * @throws Exception if the classifier encounters and error while being built.
      */
-    public void trainClassifier(Instances training_data) throws Exception{
+    public void trainClassifier(Instances training_data) throws Exception {
         if (this.classifier instanceof UpdateableClassifier) {
             logger.info("Building updateable classifier.");
             UpdateableClassifier classifier = (UpdateableClassifier) this.classifier;
@@ -394,7 +360,7 @@ class Learner {
             while (enumeration.hasMoreElements()) {
                 classifier.updateClassifier(enumeration.nextElement());
             }
-        } else{
+        } else {
             this.classifier.buildClassifier(training_data);
         }
     }
