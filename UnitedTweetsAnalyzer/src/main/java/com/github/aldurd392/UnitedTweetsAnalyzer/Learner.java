@@ -21,7 +21,6 @@ import weka.core.*;
 import weka.experiment.InstanceQuery;
 import weka.filters.Filter;
 import weka.filters.unsupervised.attribute.Remove;
-import weka.filters.unsupervised.instance.RemoveWithValues;
 
 import java.io.FileWriter;
 import java.io.IOException;
@@ -108,10 +107,24 @@ class Learner {
             "id", "profile_url", "location", "lang", "utc_offset", "timezone", "country",
     };
 
+    /**
+     * We use this regex to split the command line into
+     * a vector of Strings.
+     * We compile it for performance reason.
+     */
     final static Pattern re_spaces = Pattern.compile("\\s+");
 
+    /**
+     * We'll keep the instances used for training here.
+     */
     private Instances training_data = null;
+    /**
+     * We'll keep the unlabele instances here.
+     */
     private Instances classification_data = null;
+    /**
+     * We'll keep the classifier here.
+     */
     private AbstractClassifier classifier = null;
 
     /**
@@ -162,8 +175,15 @@ class Learner {
      * Load data from the DB and store them in instance variables.
      * Note that we always randomize the order of the retrieved instances.
      *
-     * @param isTraining if set means that we have to load training instances.
-     *                   Otherwise, we're classifying new instances.
+     * When we want to classify unlabeled instances, we have to make sure that
+     * the classifier knows the entire universe of attribute's values.
+     * Because of this, we load with a single query all the data we needs,
+     * and the we spit them.
+     * In this way the headers of the Instances set will contain the correct
+     * information.
+     *
+     * @param isTraining if set we are loading training instances.
+     *                   Otherwise, we're loading both training and unlabeled instances.
      * @throws Exception on error.
      */
     private void loadData(boolean isTraining) throws Exception {
@@ -192,34 +212,37 @@ class Learner {
                 universe = setUpData(universe, null);
                 assert (universe.attribute(Storage.UTC_OFFSET).type() == 1): "Got bad types from database";
 
+
+                this.training_data = new Instances(universe, universe.numInstances() - 200);
+                this.classification_data = new Instances(universe, 200);
+                final Attribute class_attribute = universe.classAttribute();
+
                 /**
                  * Split the data in training and unlabeled.
+                 * We could use a filter, but this is more efficient in main memory.
                  */
-                RemoveWithValues removeWithValues = new RemoveWithValues();
-                removeWithValues.setModifyHeader(false);
-                removeWithValues.setInvertSelection(true);
-                removeWithValues.setNominalIndices(String.format("%d", (int) Utils.missingValue()) + 1);
-                removeWithValues.setAttributeIndex(String.format("%d", universe.classIndex() + 1));
-                removeWithValues.setInputFormat(universe);
+                for (int i = universe.numInstances() - 1; i >= 0; i--) {
+                    Instance instance = universe.instance(i);
+                    universe.delete(i);
 
-                /**
-                 * Get the unlabeled data.
-                 */
-                this.classification_data = Filter.useFilter(universe, removeWithValues);
+                    if (Utils.isMissingValue(instance.value(class_attribute))) {
+                        this.classification_data.add(instance);
+                    } else {
+                        this.training_data.add(instance);
+                    }
+                }
+
                 assert (this.classification_data.numInstances() == Constants.classification_limit):
                     "Bad number of classification data (" +
-                            this.classification_data.numAttributes() +
+                            this.classification_data.numInstances() +
                             "), filter is likely to be not working.";
-
-                /**
-                 * Get the training data and remove the ID from them.
-                 */
-                universe.deleteWithMissing(universe.classAttribute());
-                this.training_data = universe;
 
                 assert this.training_data.equalHeadersMsg(this.classification_data) == null:
                         "Bad instances headers: " + this.training_data.equalHeadersMsg(this.classification_data);
 
+                /**
+                 * Remove the ID from the training data.
+                 */
                 Remove remove = new Remove();
                 remove.setAttributeIndices(String.format("%d", this.training_data.attribute(Storage.ID).index() + 1));
                 remove.setInputFormat(this.training_data);
@@ -361,6 +384,11 @@ class Learner {
             logger.info("Building updateable classifier.");
             UpdateableClassifier classifier = (UpdateableClassifier) this.classifier;
 
+            /**
+             * We always have to call @{@link AbstractClassifier#buildClassifier(Instances)}.
+             * We thus build a new Instances set from the dataset.
+             * Then, we start feeding the classifier.
+             */
             this.classifier.buildClassifier(new Instances(training_data, 0));
             Enumeration<Instance> enumeration = training_data.enumerateInstances();
             while (enumeration.hasMoreElements()) {
