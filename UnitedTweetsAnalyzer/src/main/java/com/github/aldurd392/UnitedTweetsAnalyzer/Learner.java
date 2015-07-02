@@ -215,6 +215,8 @@ class Learner {
 
                 assert this.training_data.numAttributes() == this.classification_data.numAttributes() - 1 :
                         "Training data filtering is not working, bad number of attributes.";
+                assert this.training_data.attribute(Storage.ID) == null :
+                        "ID attributes can still be found after filtering!";
             }
         } catch (Exception e) {
             logger.error("Error while executing DB query", e);
@@ -356,9 +358,12 @@ class Learner {
              * Then, we start feeding the classifier.
              */
             this.classifier.buildClassifier(new Instances(training_data, 0));
-            Enumeration<Instance> enumeration = training_data.enumerateInstances();
-            while (enumeration.hasMoreElements()) {
-                classifier.updateClassifier(enumeration.nextElement());
+
+            for (int i = training_data.numInstances() - 1; i >= 0; i--) {
+                Instance instance = training_data.instance(i);
+                training_data.delete(i);
+
+                classifier.updateClassifier(instance);
             }
         } else {
             this.classifier.buildClassifier(training_data);
