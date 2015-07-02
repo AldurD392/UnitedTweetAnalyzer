@@ -55,7 +55,10 @@ As an example:
 $ java -jar target/UnitedTwitterAnalyzer-jar-with-dependencies.jar -h
 
 usage: UnitedTweetsAnalyzer
- -b,--stream_bias <arg>       bias applied to the stream [geo, all]
+ -b,--stream_bias <arg>       bias applied to the stream [all, geo,
+                              all_geo]
+ -c,--learner_cl <arg>        specify the Weka-like configuration of the
+                              learner
  -e,--evaluation rate <arg>   specify the evaluation rate; 0 < values < 1
                               will let the evaluator use a percentage of
                               the training data as tests; values > 1 will
@@ -63,7 +66,9 @@ usage: UnitedTweetsAnalyzer
                               validation
  -h,--help                    print this help
  -l,--learner_name <arg>      name of the classifier [random_forest, all,
-                              perceptron, libsvm, dtree, nbayes]
+                              perceptron, libsvm, kstar, adaboost, part,
+                              decision_stump, smo, dtree, htree,
+                              random_tree, reptree, nbayes]
  -o,--output path <arg>       specify an optional output path for the
                               unsupervised classification results
  -s,--shapefile <arg>         shapefile path
@@ -95,6 +100,8 @@ If you need to listen to an unbiased sample of the Twitter stream (e.g. to acqui
 $ java -jar target/UnitedTwitterAnalyzer-jar-with-dependencies.jar -t store -s shapefile.shp -b all
 ```
 
+Alternatively, you can bias the stream to acquire only those tweets having an attached location (`-b all_geo`).
+
 #### Learn task
 Once you have acquired enough data you can build and evaluate a classifier.
 The `learn` task is your friend.
@@ -111,6 +118,9 @@ The `-e` flag lets you specify the evaluation type.
 Values between 0 and 1 will specify the use of a portion of the dataset as test data (percentage split).
 Values greater than 1 will enable k-fold cross-validation.
 
+The `-c` flag lets you specify the command line arguments for the learner.
+It is ignored with `-l all`.
+
 #### Classify task
 This task lets you label new instances.
 It will sample them from those in our database who don't have an associated geographic position.
@@ -122,10 +132,41 @@ $ java -jar target/UnitedTwitterAnalyzer-jar-with-dependencies.jar -t classify -
 ```
 
 Note that, by supplying the `-o` flag, we're storing the classification output in an Excel readable CSV file.
+The `-c` flag is also supported here (see previous task).
 
 ## Experimental results
-We've experimented with lot of different settings.
-We'll report here some of our experimental results.
+We've experimented with lot of different settings and we'll report here some of our experimental results.
+
+### Dataset
+We've gathered a dataset of 700k users and 800k tweets.
+Our experiments were often limited by the size of our physical main memory, but we've stretched the performance of our system to the maximum.
+
+### Naive Bayes results
+The following evaluation statistics have been obtained by using 10-fold cross validation.
+
+```
+Correctly Classified Instances      512926               65.9836 %
+Incorrectly Classified Instances    264428               34.0164 %
+Kappa statistic                          0.5196
+Mean absolute error                      0.0179
+Root mean squared error                  0.0954
+Relative absolute error                 59.7094 %
+Root relative squared error             77.8616 %
+Coverage of cases (0.95 level)          94.9072 %
+Mean rel. region size (0.95 level)      24.3993 %
+Total Number of Instances           777354
+```
+
+As you can see, we've got a pretty accuracy of 66%.
+
+### Hoeffding Tree results
+This classifier performs similarly to Naive Bayes, on which it internally relies. 
+Supplying even more data to this classifier would probably improve the results.
+
+### Other classifiers
+Our system out-of-the-box includes a great number of classifiers and can be easily extended.
+We've tested those classifiers, but we couldn't manage to gather enough main memory space to report their results with this huge dataset.
+Anyway, we'd be happy to hear from you. :)
 
 ## Authors
 Adriano Di Luzio & Danilo Francati
