@@ -21,6 +21,8 @@ class Storage {
     private final static String JDBC_PREFIX = "jdbc:sqlite:";
     private final static String JDBC_DRIVER = "org.sqlite.JDBC";
 
+    public final static String CLASSIFICATION_VIEW = "classification_view";
+
     public final static String ID = "ID";
 
     private final static String USERNAME = "USERNAME";
@@ -101,6 +103,7 @@ class Storage {
             logger.debug("Database successfully opened.");
             if (!exists) {
                 this.initDatabase();
+                this.prepareClassificationView();
             }
         } catch (SQLException | ClassNotFoundException e) {
             logger.fatal("Error while connecting to / initializing the database.", e);
@@ -379,6 +382,26 @@ class Storage {
             }
         } finally {
             this.lock.unlock();
+        }
+    }
+
+    public void prepareClassificationView() throws SQLException {
+        try (Statement stmt = this.c.createStatement()) {
+            String classificationView =  "" +
+                    "CREATE VIEW " + Storage.CLASSIFICATION_VIEW + " AS " +
+                    "SELECT * " +
+                    "FROM (SELECT USER.ID, " +
+                    "USER.LANG, USER.LOCATION, " +
+                    "USER.UTC_OFFSET, USER.TIMEZONE, " +
+                    "NULL as COUNTRY " +
+                    "FROM USER WHERE USER.ID not in " +
+                    "(SELECT TWEET.USER_ID FROM TWEET) " +
+                    "ORDER BY RANDOM() LIMIT 0, 200) " +
+                    "UNION SELECT USER.ID, USER.LANG, USER.LOCATION, " +
+                    "USER.UTC_OFFSET, USER.TIMEZONE, " +
+                    "TWEET.COUNTRY FROM USER, " +
+                    "TWEET WHERE USER.ID = TWEET.USER_ID";
+            stmt.executeUpdate(classificationView);
         }
     }
 

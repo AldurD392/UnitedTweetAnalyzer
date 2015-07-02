@@ -101,40 +101,7 @@ class Learner {
      * Nonetheless, we don't wanna use ID while classifying:
      * we thus filter the IDs away from the training data.
      */
-    private final static String classificationQuery = String.format(
-            "SELECT * FROM (" +
-                    "SELECT %s.%s, %s.%s, %s.%s, %s.%s, %s.%s, NULL as %s " +
-                    "FROM %s " +
-                    "WHERE %s.%s not in " +
-                    "(" +
-                    "SELECT %s.%s " +
-                    "FROM %s" +
-                    ") " +
-                    "ORDER BY RANDOM() " +
-                    "LIMIT %d) " +
-                    "UNION " +
-                    "SELECT %s.%s, %s.%s, %s.%s, %s.%s, %s.%s, %s.%s " +
-                    "FROM %s, %s " +
-                    "WHERE %s.%s = %s.%s",
-            Storage.TABLE_USER, Storage.ID,
-            Storage.TABLE_USER, Storage.LANG,
-            Storage.TABLE_USER, Storage.LOCATION,
-            Storage.TABLE_USER, Storage.UTC_OFFSET,
-            Storage.TABLE_USER, Storage.TIMEZONE,
-            Storage.COUNTRY,
-            Storage.TABLE_USER,
-            Storage.TABLE_USER, Storage.ID,
-            Storage.TABLE_TWEET, Storage.USER_ID,
-            Storage.TABLE_TWEET,
-            Constants.classification_limit,
-            Storage.TABLE_USER, Storage.ID,
-            Storage.TABLE_USER, Storage.LANG,
-            Storage.TABLE_USER, Storage.LOCATION,
-            Storage.TABLE_USER, Storage.UTC_OFFSET,
-            Storage.TABLE_USER, Storage.TIMEZONE,
-            Storage.TABLE_TWEET, Storage.COUNTRY,
-            Storage.TABLE_USER, Storage.TABLE_TWEET,
-            Storage.TABLE_USER, Storage.ID, Storage.TABLE_TWEET, Storage.USER_ID);
+    private final static String classificationQuery = "SELECT * FROM foo";
 
     private static final char CSV_DELIMITER = ';';
     private static final Object[] CSV_FILE_HEADER = {
@@ -223,6 +190,7 @@ class Learner {
                  * training and unlabeled.
                  */
                 universe = setUpData(universe, null);
+                assert (universe.attribute(Storage.UTC_OFFSET).type() == 1): "Got bad types from database";
 
                 /**
                  * Split the data in training and unlabeled.
@@ -230,7 +198,7 @@ class Learner {
                 RemoveWithValues removeWithValues = new RemoveWithValues();
                 removeWithValues.setModifyHeader(false);
                 removeWithValues.setInvertSelection(true);
-                removeWithValues.setNominalIndices(String.format("%d", (int) Utils.missingValue() + 1));
+                removeWithValues.setNominalIndices(String.format("%d", (int) Utils.missingValue()) + 1);
                 removeWithValues.setAttributeIndex(String.format("%d", universe.classIndex() + 1));
                 removeWithValues.setInputFormat(universe);
 
@@ -238,7 +206,10 @@ class Learner {
                  * Get the unlabeled data.
                  */
                 this.classification_data = Filter.useFilter(universe, removeWithValues);
-
+                assert (this.classification_data.numInstances() == Constants.classification_limit):
+                    "Bad number of classification data (" +
+                            this.classification_data.numAttributes() +
+                            "), filter is likely to be not working.";
 
                 /**
                  * Get the training data and remove the ID from them.
@@ -246,11 +217,17 @@ class Learner {
                 universe.deleteWithMissing(universe.classAttribute());
                 this.training_data = universe;
 
+                assert this.training_data.equalHeadersMsg(this.classification_data) == null:
+                        "Bad instances headers: " + this.training_data.equalHeadersMsg(this.classification_data);
+
                 Remove remove = new Remove();
                 remove.setAttributeIndices(String.format("%d", this.training_data.attribute(Storage.ID).index() + 1));
                 remove.setInputFormat(this.training_data);
                 this.training_data = Filter.useFilter(this.training_data, remove);
                 this.training_data.randomize(new Random());
+
+                assert this.training_data.numAttributes() == this.classification_data.numAttributes() - 1:
+                        "Training data filtering is not working, bad number of attributes.";
             }
         } catch (Exception e) {
             logger.error("Error while executing DB query", e);
@@ -457,15 +434,8 @@ class Learner {
         }
 
         for (Instance i : this.classification_data) {
-            logger.info(i.toString());
             remove.input(i);
             Instance trimmedInstance = remove.output();
-            logger.info(trimmedInstance.toString());
-
-            assert trimmedInstance.numAttributes() == this.training_data.firstInstance().numAttributes();
-            for (int j = 0; j < trimmedInstance.numAttributes(); j++) {
-                assert trimmedInstance.attribute(j).type() == this.training_data.firstInstance().attribute(j).type();
-            }
 
             try {
                 final double classification = this.classifier.classifyInstance(trimmedInstance);
@@ -476,7 +446,7 @@ class Learner {
                         String.format(Constants.twitter_user_intent, id),
                         i.stringValue(attribute_location),
                         i.stringValue(attribute_lang),
-                        i.value(attribute_utc_offset),
+                        i.stringValue(attribute_utc_offset),
                         i.stringValue(attribute_timezone),
                         this.training_data.classAttribute().value((int) classification),
                 };
