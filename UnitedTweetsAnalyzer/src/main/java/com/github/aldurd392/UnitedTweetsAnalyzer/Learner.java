@@ -100,7 +100,7 @@ class Learner {
      * Nonetheless, we don't wanna use ID while classifying:
      * we thus filter the IDs away from the training data.
      */
-    private final static String classificationQuery = "SELECT * FROM foo";
+    private final static String classificationQuery = "SELECT * FROM " + Storage.CLASSIFICATION_VIEW;
 
     private static final char CSV_DELIMITER = ';';
     private static final Object[] CSV_FILE_HEADER = {
