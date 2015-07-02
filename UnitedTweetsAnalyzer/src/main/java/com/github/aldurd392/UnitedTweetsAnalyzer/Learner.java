@@ -88,15 +88,18 @@ class Learner {
             Storage.TABLE_USER, Storage.ID, Storage.TABLE_TWEET, Storage.USER_ID);
 
     /**
-     * // TODO
-     * Load from the DB all the unlabeled instances.
+     * Load from the DB both the training and the unlabeled instances.
      * Those instances will be used for the unsupervised
      * machine learning task.
      * <p>
      * We take a sample of the unlabeled data.
      * <p>
-     * Please note that the format retrieved by this query
-     * must be equal to the one retrieved by trainingQuery.
+     * We need to load all those data because some classifiers need
+     * to know the whole universe of nominal data.
+     * In addition, we load the data with the ID, in order to
+     * manually check the classification.
+     * Nonetheless, we don't wanna use ID while classifying:
+     * we thus filter the IDs away from the training data.
      */
     private final static String classificationQuery = String.format(
             "SELECT * FROM (" +
@@ -190,14 +193,14 @@ class Learner {
 
     /**
      * Load data from the DB and store them in instance variables.
-     * Note that always randomize the order of the retrieved instances.
+     * Note that we always randomize the order of the retrieved instances.
      *
      * @param isTraining if set means that we have to load training instances.
      *                   Otherwise, we're classifying new instances.
      * @throws Exception on error.
      */
     private void loadData(boolean isTraining) throws Exception {
-        logger.info("Loading {} data.", isTraining ? "training" : "unlabeled");
+        logger.info("Loading {} data.", isTraining ? "training" : "training and unlabeled");
 
         InstanceQuery query = null;
         try {
@@ -215,18 +218,31 @@ class Learner {
                 query.setQuery(classificationQuery);
                 Instances universe = query.retrieveInstances();
 
+                /**
+                 * Load the whole universe of data:
+                 * training and unlabeled.
+                 */
                 universe = setUpData(universe, null);
 
+                /**
+                 * Split the data in training and unlabeled.
+                 */
                 RemoveWithValues removeWithValues = new RemoveWithValues();
                 removeWithValues.setModifyHeader(false);
                 removeWithValues.setInvertSelection(true);
                 removeWithValues.setNominalIndices(String.format("%d", (int) Utils.missingValue() + 1));
-
                 removeWithValues.setAttributeIndex(String.format("%d", universe.classIndex() + 1));
                 removeWithValues.setInputFormat(universe);
 
+                /**
+                 * Get the unlabeled data.
+                 */
                 this.classification_data = Filter.useFilter(universe, removeWithValues);
 
+
+                /**
+                 * Get the training data and remove the ID from them.
+                 */
                 universe.deleteWithMissing(universe.classAttribute());
                 this.training_data = universe;
 
@@ -234,7 +250,7 @@ class Learner {
                 remove.setAttributeIndices(String.format("%d", this.training_data.attribute(Storage.ID).index() + 1));
                 remove.setInputFormat(this.training_data);
                 this.training_data = Filter.useFilter(this.training_data, remove);
-                logger.debug(this.training_data.firstInstance().toString());
+                this.training_data.randomize(new Random());
             }
         } catch (Exception e) {
             logger.error("Error while executing DB query", e);
@@ -340,7 +356,12 @@ class Learner {
         logger.debug("Classifier {} correctly created.", this.classifier.getClass().getSimpleName());
     }
 
-    // TODO Doc
+    /**
+     * If evaluating by using a percentage of the dataset as test,
+     * this function split the data as required.
+     * @param percentage_split parameter indicating the percentage of test data.
+     * @return An entry containing, in order, training and test sets.
+     */
     private Map.Entry<Instances, Instances> splitTrainingTestData(float percentage_split) {
         assert (percentage_split > 0 && percentage_split < 1);
 
@@ -353,7 +374,11 @@ class Learner {
         return new AbstractMap.SimpleEntry<>(train, test);
     }
 
-    // TODO: DOC
+    /**
+     * Train the classifier on the given instances.
+     * @param training_data the instances to use.
+     * @throws Exception if the classifier encounters and error while being built.
+     */
     public void trainClassifier(Instances training_data) throws Exception{
         if (this.classifier instanceof UpdateableClassifier) {
             logger.info("Building updateable classifier.");
@@ -414,7 +439,6 @@ class Learner {
 
             return;
         }
-
 
         final Attribute attribute_id = this.classification_data.attribute(Storage.ID);
         final Attribute attribute_location = this.classification_data.attribute(Storage.LOCATION);
@@ -493,15 +517,14 @@ class Learner {
      * @return the evaluation of the classifier.
      */
     public Evaluation buildAndEvaluate(float evaluation_rate) {
-        Evaluation eval = null;
-
         try {
             this.loadData(true);
         } catch (Exception e) {
             logger.error("Error while loading training data.", e);
-            return eval;
+            return null;
         }
 
+        Evaluation eval = null;
         assert evaluation_rate > 0;
         try {
             if (evaluation_rate < 1) {

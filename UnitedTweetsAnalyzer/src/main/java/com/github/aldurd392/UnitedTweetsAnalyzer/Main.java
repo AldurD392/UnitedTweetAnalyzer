@@ -260,9 +260,9 @@ class Main {
 
                         for (String classifier : Learner.classifiers.keySet()) {
                             Learner learner = new Learner(classifier, null);
-                            // TODO
-                            eval = learner.buildAndEvaluate(evaluation_rate);
-
+                            if ((eval = learner.buildAndEvaluate(evaluation_rate)) == null) {
+                                return;
+                            }
                             logger.info(eval.toSummaryString("Results\n", false));
 
                             int classIndex = learner.getTrainingData().classIndex();
@@ -286,7 +286,11 @@ class Main {
                                 classifier_name,
                                 commandLine.getOptionValue(LEARNER_CL, null)
                         );
-                        eval = learner.buildAndEvaluate(evaluation_rate);
+
+                        if ((eval = learner.buildAndEvaluate(evaluation_rate)) == null) {
+                            return;
+                        }
+
                         logger.info(eval.toSummaryString("Results\n", false));
                     }
                 } else {
