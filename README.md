@@ -1,6 +1,12 @@
 # United Tweet Analyzer
 Machine Learning - Web & Social classes, joint project, 2015.
 
+Goals:
+* Given a bounding box and a shapefile, listen to the Twitter stream of Tweets having a geographic position that falls within the bounding box.
+Then, assign a region (country, city and so on) to those tweets, by using the shapefile.
+* Given the ground truth (a dataset of users, their tweets and the relative position/region), learn a Machine Learning function able to classify unseen data.
+* Test and evaluate different algorithms. Find out the precision of the best one while classifying unlabeled data.
+
 ## Install
 UnitedTweetsAnalyzer is a Maven project.
 You can install it (i.e. build the JAR package) as follows.
@@ -27,17 +33,17 @@ $ mvn javadoc:javadoc
 ```
 
 The generated index file lies in `target/site/apidocs/index.html`.
-Furthermore, the source code is heavily commented.
+In addition to the docs, the source code should be readable and heavily commented.
 
 ## Configuration
-This project requires a valid Twitter API key in order to run.
+This project requires a valid Twitter API key in order to run (specifically, it is needed to launch the Store task, see later).
 
 ### Twitter OAuth
 Edit/create the `twitter4j.properties` file within the `UnitedTweetsAnalyzer` directory and enter yours before continuing.
 More detailed docs related to the Twitter4J configuration are available [here](http://twitter4j.org/en/configuration.html).
 
 ### Assertion checks
-We've made use of Java assertions in our code.
+We've made a large use of the Java assertions in our code.
 You can enable them by passing the `-ea` flag to the `java` command.
 We strongly advise it.
 
@@ -75,6 +81,8 @@ usage: UnitedTweetsAnalyzer
  -t,--task <arg>              set the task type [store, learn, classify]
 ```
 
+The `-t` option is always required.
+
 ### Task types
 As you can see, you have to specify a task to be executed.
 Three tasks are available:
@@ -85,6 +93,8 @@ Three tasks are available:
 
 Each one of those tasks requires different command line configuration.
 We'll provide some examples here.
+
+Please note that before being able to Learn and / or Classify instances, you need to launch at least once (many seconds are enough) the Store task, in order to gather the necessary training and unlabeled data.
 
 #### Store task
 This task requires a shapefile path (`-s` flag): i.e. a valid `.shp` and its related metadata (`.shx`, and so on).
@@ -101,6 +111,8 @@ $ java -jar target/UnitedTwitterAnalyzer-jar-with-dependencies.jar -t store -s s
 ```
 
 Alternatively, you can bias the stream to acquire only those tweets having an attached location (`-b all_geo`).
+
+This is a forever-running task. You can stop it anytime you want by pressing `CTRL-c`.
 
 #### Learn task
 Once you have acquired enough data you can build and evaluate a classifier.
@@ -138,10 +150,18 @@ The `-c` flag is also supported here (see previous task).
 We've experimented with lot of different settings and we'll report here some of our experimental results.
 
 ### Dataset
+We've set the bounding box to the one containing the whole USA.
 We've gathered a dataset of 700k users and 800k tweets.
+The tweets represent our ground truth, because they have an associated region and are linked to a Twitter user.
+
+Among those tweets, ~400k had an associated USA region.
+The remaining, on the other side, were foreign.
+Both those information have been exploited by our algorithms in order to learn when to classify a user inside one of the USA countries or outside the states.
+Note that the size of USA/foreign tweets is roughly the same. We'll be in fact testing the precision of the algorithms on unsupervised data, i.e. a sample of the entire tweet stream. As a consequence, it's more likely to see someone from the whole world than from the USA, and the algorithms has to consequently react.
+
 Our experiments were often limited by the size of our physical main memory, but we've stretched the performance of our system to the maximum.
 
-### Naive Bayes results
+### Naive Bayes
 The following evaluation statistics have been obtained by using 10-fold cross validation.
 
 ```
@@ -159,7 +179,7 @@ Total Number of Instances           777354
 
 As you can see, we've got a pretty accuracy of 66%.
 
-### Hoeffding Tree results
+### Hoeffding Tree
 This classifier performs similarly to (slightly better than, actually) Naive Bayes, on which it internally relies.
 Supplying even more data to this classifier would probably improve the results.
 
@@ -180,9 +200,17 @@ Total Number of Instances           777354
 ```
 
 ### Other classifiers
-Our system out-of-the-box includes a great number of classifiers and can be easily extended.
-We've tested those classifiers, but we couldn't manage to gather enough main memory space to report their results with this huge dataset.
+Our system includes, out-of-the-box, a great number of classifiers and can be easily extended.
+We've tested all those classifiers, but we couldn't manage to gather enough main memory space to report their results with our whole dataset.
 Anyway, we'd be happy to hear from you. :)
+
+### Performance
+We've chosen by design and for simplicity, to store our data in an SQLite database.
+It suits our needs, because it can be easily handled by Maven without any other dependency, but is slow while querying data in our big dataset (a Users-Tweets joint query takes ~10 seconds).
+Switching to a faster database storage would dramatically improve the performance of the system but is beyond the scope of our project.
+
+Storage aside, each learning algorithm comes with its own performances.
+Nonetheless, our system is designed to exploit maximize the performance while minimizing the necessary memory.
 
 ## Authors
 Adriano Di Luzio & Danilo Francati
