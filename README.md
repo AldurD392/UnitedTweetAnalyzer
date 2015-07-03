@@ -8,7 +8,7 @@ Then, assign a region (country, city and so on) to those tweets, by using the sh
 * Test and evaluate different algorithms. Find out the precision of the best one while classifying unlabeled data.
 
 ## Install
-UnitedTweetsAnalyzer is a Maven project.
+UnitedTweetsAnalyzer ships as a Maven project. We've tested it against Java 8 and should be fine with every version >= 7.
 You can install it (i.e. build the JAR package) as follows.
 
 ```bash
@@ -19,7 +19,7 @@ $ mvn package
 You'll find the generated JAR in the `target` directory.
 Specifically there will be two files of interest:
 * A standalone file (`UnitedTwitterAnalyzer-jar-with-dependencies.jar`).
-* A maven executable file (`UnitedTwitterAnalyzer.jar`).
+* A maven executable file (`UnitedTwitterAnalyzer.jar`). Execute it with `mvn exec:java -Dexec.args="COMMAND_LINE_OPTIONS"`.
 
 Packaging the project will also run the unit tests.
 You can disable them with the `-Dmaven.test.skip=true` flag.
