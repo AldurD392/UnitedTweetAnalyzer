@@ -66,10 +66,10 @@ class Storage {
 
     private final static String LAT = "LAT";
     private final static String LON = "LON";
-    public final static String USER_ID = "USER_ID";
+    private final static String USER_ID = "USER_ID";
 
-    public final static String TABLE_USER = "USER";
-    public final static String TABLE_TWEET = "TWEET";
+    private final static String TABLE_USER = "USER";
+    private final static String TABLE_TWEET = "TWEET";
 
     public final static String COUNTRY = "COUNTRY";  // This will also be the classifier class.
 
@@ -210,7 +210,7 @@ class Storage {
      *
      * @throws SQLException in case of exception while executing the query.
      */
-    public void prepareClassificationView() throws SQLException {
+    private void prepareClassificationView() throws SQLException {
         try (Statement stmt = this.c.createStatement()) {
             String classificationView = String.format(
                     "CREATE VIEW %s AS " +
@@ -442,10 +442,10 @@ class Storage {
              * avoid some Russians hackers to
              * SQL inject us! :)
              */
-            String insert = "INSERT INTO " + TABLE_TWEET +
-                    String.format(
-                            " (%s, %s, %s, %s, %s) VALUES (?, ?, ?, ?, ?);",
-                            ID, LAT, LON, COUNTRY, USER_ID);
+            String insert = String.format(
+                    "INSERT INTO %s (%s, %s, %s, %s, %s) VALUES (?, ?, ?, ?, ?);",
+                    TABLE_TWEET,
+                    ID, LAT, LON, COUNTRY, USER_ID);
 
             try (PreparedStatement stmt = this.c.prepareStatement(insert)) {
                 stmt.setLong(1, tweet.getId());

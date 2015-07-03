@@ -79,7 +79,7 @@ class Learner {
      * a vector of Strings.
      * We compile it for performance reason.
      */
-    final static Pattern re_spaces = Pattern.compile("\\s+");
+    private final static Pattern re_spaces = Pattern.compile("\\s+");
 
     /**
      * We'll keep the instances used for training here.
@@ -123,7 +123,7 @@ class Learner {
      * @param filter    if set applies the filter on the input instances.
      * @return the set up instances.
      */
-    public Instances setUpData(Instances instances, Filter filter) {
+    private Instances setUpData(Instances instances, Filter filter) {
         Instances newInstances = instances;
 
         if (filter != null) {
@@ -344,7 +344,7 @@ class Learner {
      * @param training_data the instances to use.
      * @throws Exception if the classifier encounters and error while being built.
      */
-    public void trainClassifier(Instances training_data) throws Exception {
+    private void trainClassifier(Instances training_data) throws Exception {
         if (this.classifier instanceof UpdateableClassifier) {
             logger.info("Building updateable classifier.");
             UpdateableClassifier classifier = (UpdateableClassifier) this.classifier;
@@ -437,7 +437,7 @@ class Learner {
                 final double classification = this.classifier.classifyInstance(trimmedInstance);
 
                 final long id = Double.valueOf(i.value(attribute_id)).longValue();
-                Object[] values = {
+                final Object[] values = {
                         id,
                         String.format(Constants.twitter_user_intent, id),
                         i.stringValue(attribute_location),
