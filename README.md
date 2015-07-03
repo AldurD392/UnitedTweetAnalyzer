@@ -13,7 +13,7 @@ You can install it (i.e. build the JAR package) as follows.
 
 ```bash
 $ git clone https://github.com/AldurD392/UnitedTweetAnalyzer  # or download the repository as ZIP
-$ cd UnitedTweetsAnalyzer
+$ cd UnitedTweetsAnalyzer/UnitedTweetsAnalyer
 $ mvn package
 ```
 
