@@ -12,6 +12,7 @@ UnitedTweetsAnalyzer ships as a Maven project. We've tested it against Java 8 an
 You can install it (i.e. build the JAR package) as follows.
 
 ```bash
+$ git clone https://github.com/AldurD392/UnitedTweetAnalyzer  # or download the repository as ZIP
 $ cd UnitedTweetsAnalyzer
 $ mvn package
 ```
@@ -191,6 +192,19 @@ As you can see, we've got a pretty accuracy of 66%.
 ### Hoeffding Tree
 This classifier performs similarly to (slightly better than, actually) Naive Bayes, on which it internally relies.
 Supplying even more data to this classifier would probably improve the results.
+
+```
+Correctly Classified Instances      563836               72.5327 %
+Incorrectly Classified Instances    213518               27.4673 %
+Kappa statistic                          0.5792
+Mean absolute error                      0.0283
+Root mean squared error                  0.1128
+Relative absolute error                 94.2586 %
+Root relative squared error             92.0916 %
+Coverage of cases (0.95 level)          97.164  %
+Mean rel. region size (0.95 level)      78.072  %
+Total Number of Instances           777354
+```
 
 ### Adaboost
 Adaboost is faster, but produces slightly worst results:

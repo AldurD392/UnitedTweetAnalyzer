@@ -433,38 +433,35 @@ class Learner {
             remove.input(i);
             Instance trimmedInstance = remove.output();
 
+            final long id = Double.valueOf(i.value(attribute_id)).longValue();
+            double classification;
+
             try {
-                final double classification = this.classifier.classifyInstance(trimmedInstance);
-
-                final long id = Double.valueOf(i.value(attribute_id)).longValue();
-                final Object[] values = {
-                        id,
-                        String.format(Constants.twitter_user_intent, id),
-                        i.stringValue(attribute_location),
-                        i.stringValue(attribute_lang),
-                        i.stringValue(attribute_utc_offset),
-                        i.stringValue(attribute_timezone),
-                        this.training_data.classAttribute().value((int) classification),
-                };
-
-                if (csvFilePrinter != null) {
-                    csvFilePrinter.printRecord(values);
-                }
-
-                logger.debug("Classification - {} -> {}", i.toString(), values[6]);
+                classification = this.classifier.classifyInstance(trimmedInstance);
             } catch (Exception e) {
-                /**
-                 * Some classifiers could be unable to do their job,
-                 * if trying to label instances with unseen attributes values
-                 * NaiveBayes, I'm looking at you!
-                 *
-                 * If we don't know in advance the attributes value space,
-                 * we can't classify those instances.
-                 */
                 logger.warn("Classification - id: {}, class: UNAVAILABLE",
-                        Double.valueOf(i.value(attribute_id)).longValue()
+                        id
                 );
                 logger.error("Error while classifying unlabeled instance", e);
+                return;
+            }
+
+            final Object[] values = {
+                    id,
+                    String.format(Constants.twitter_user_intent, id),
+                    i.stringValue(attribute_location),
+                    i.stringValue(attribute_lang),
+                    i.stringValue(attribute_utc_offset),
+                    i.stringValue(attribute_timezone),
+                    this.training_data.classAttribute().value((int) classification),
+            };
+
+            if (csvFilePrinter != null) {
+                try {
+                    csvFilePrinter.printRecord(values);
+                } catch (IOException e) {
+                    logger.error("Error while printing CSV records for ID {}", id, e);
+                }
             }
         }
 
