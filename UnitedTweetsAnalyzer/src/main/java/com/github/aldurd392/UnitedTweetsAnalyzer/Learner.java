@@ -7,6 +7,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import weka.classifiers.AbstractClassifier;
 import weka.classifiers.Evaluation;
+import weka.classifiers.UpdateableClassifier;
 import weka.classifiers.bayes.NaiveBayes;
 import weka.classifiers.bayes.NaiveBayesUpdateable;
 import weka.classifiers.functions.LibSVM;
@@ -16,10 +17,7 @@ import weka.classifiers.lazy.KStar;
 import weka.classifiers.meta.AdaBoostM1;
 import weka.classifiers.rules.PART;
 import weka.classifiers.trees.*;
-import weka.core.Attribute;
-import weka.core.Instance;
-import weka.core.Instances;
-import weka.core.SelectedTag;
+import weka.core.*;
 import weka.experiment.InstanceQuery;
 import weka.filters.Filter;
 import weka.filters.unsupervised.attribute.Remove;
@@ -37,6 +35,8 @@ import java.util.regex.Pattern;
  * or classify unknown instances.
  */
 class Learner {
+    private final static Logger logger = LogManager.getLogger(Learner.class.getSimpleName());
+
     /**
      * This map will let you add other classifiers to this class.
      * You can specify all those classifiers that inherit from AbstractClassifier
@@ -44,62 +44,6 @@ class Learner {
      * @see AbstractClassifier
      */
     public final static Map<String, Class<? extends AbstractClassifier>> classifiers;
-    private final static Logger logger = LogManager.getLogger(Learner.class.getSimpleName());
-    /**
-     * Load from the DB all the labeled instances.
-     * i.e. users who have at least a tweet labeled
-     * with an associated country.
-     */
-    private final static String trainingQuery = String.format(
-            "SELECT %s.%s, %s.%s, %s.%s, %s.%s, %s.%s " +
-                    "FROM %s, %s " +
-                    "WHERE %s.%s = %s.%s",
-            Storage.TABLE_USER, Storage.LANG,
-            Storage.TABLE_USER, Storage.LOCATION,
-            Storage.TABLE_USER, Storage.UTC_OFFSET,
-            Storage.TABLE_USER, Storage.TIMEZONE,
-            Storage.TABLE_TWEET, Storage.COUNTRY,
-            Storage.TABLE_USER, Storage.TABLE_TWEET,
-            Storage.TABLE_USER, Storage.ID, Storage.TABLE_TWEET, Storage.USER_ID);
-    /**
-     * Load from the DB all the unlabeled instances.
-     * Those instances will be used for the unsupervised
-     * machine learning task.
-     * <p/>
-     * We take a sample of the unlabeled data.
-     * <p/>
-     * Please note that the format retrieved by this query
-     * must be equal to the one retrieved by trainingQuery.
-     */
-    private final static String classificationQuery = String.format(
-            "SELECT %s.%s ,%s.%s, %s.%s, %s.%s, %s.%s, NULL as %s " +
-                    "FROM %s " +
-                    "WHERE %s not in " +
-                    "(" +
-                    "SELECT %s.%s " +
-                    "FROM %s, %s " +
-                    "WHERE %s.%s = %s.%s" +
-                    ")" +
-                    "ORDER BY RANDOM()" +
-                    "LIMIT %d",
-            Storage.TABLE_USER, Storage.ID,
-            Storage.TABLE_USER, Storage.LANG,
-            Storage.TABLE_USER, Storage.LOCATION,
-            Storage.TABLE_USER, Storage.UTC_OFFSET,
-            Storage.TABLE_USER, Storage.TIMEZONE,
-            Storage.COUNTRY,
-            Storage.TABLE_USER,
-            Storage.ID,
-            Storage.TABLE_USER, Storage.ID,
-            Storage.TABLE_USER, Storage.TABLE_TWEET,
-            Storage.TABLE_USER, Storage.ID, Storage.TABLE_TWEET, Storage.USER_ID,
-            Constants.classification_limit
-    );
-    private static final char CSV_DELIMITER = ';';
-    private static final Object[] CSV_FILE_HEADER = {
-            "id", "profile_url", "location", "lang", "utc_offset", "timezone", "country",
-    };
-    private final static Pattern re_spaces = Pattern.compile("\\s+");
 
     static {
         HashMap<String, Class<? extends AbstractClassifier>> map = new HashMap<>();
@@ -125,8 +69,29 @@ class Learner {
         classifiers = Collections.unmodifiableMap(map);
     }
 
+    private static final char CSV_DELIMITER = ';';
+    private static final Object[] CSV_FILE_HEADER = {
+            "id", "profile_url", "location", "lang", "utc_offset", "timezone", "country",
+    };
+
+    /**
+     * We use this regex to split the command line into
+     * a vector of Strings.
+     * We compile it for performance reason.
+     */
+    final static Pattern re_spaces = Pattern.compile("\\s+");
+
+    /**
+     * We'll keep the instances used for training here.
+     */
     private Instances training_data = null;
+    /**
+     * We'll keep the unlabeled instances here.
+     */
     private Instances classification_data = null;
+    /**
+     * We'll keep the classifier here.
+     */
     private AbstractClassifier classifier = null;
 
     /**
@@ -139,8 +104,15 @@ class Learner {
     public Learner(String classifier_name, String cl_config) throws Exception {
         super();
 
-        this.loadData(true);
         this.classifierFactory(classifier_name, cl_config);
+    }
+
+    public Instances getTrainingData() {
+        return this.training_data;
+    }
+
+    public AbstractClassifier getClassifier() {
+        return this.classifier;
     }
 
     /**
@@ -151,48 +123,101 @@ class Learner {
      * @param filter    if set applies the filter on the input instances.
      * @return the set up instances.
      */
-    private Instances setUpData(Instances instances, Filter filter) {
-
+    public Instances setUpData(Instances instances, Filter filter) {
         Instances newInstances = instances;
 
         if (filter != null) {
             try {
                 newInstances = Filter.useFilter(instances, filter);
             } catch (Exception e) {
-                logger.warn("Cannot filter data, Ignoring filter.", e);
+                logger.warn("Cannot filter data. Ignoring supplied filter.", e);
             }
         }
 
-        newInstances.setClass(instances.attribute(Storage.COUNTRY));
+        newInstances.setClass(newInstances.attribute(Storage.COUNTRY));
         return newInstances;
     }
 
     /**
      * Load data from the DB and store them in instance variables.
-     * Note that always randomize the order of the retrieved instances.
+     * Note that we always randomize the order of the retrieved instances.
+     * <p>
+     * When we want to classify unlabeled instances, we have to make sure that
+     * the classifier knows the entire universe of attribute's values.
+     * Because of this, we load with a single query all the data we needs,
+     * and the we spit them.
+     * In this way the headers of the Instances set will contain the correct
+     * information.
      *
-     * @param isTraining if set means that we have to load training instances.
-     *                   Otherwise, we're classifying new instances.
+     * @param isTraining if set we are loading training instances.
+     *                   Otherwise, we're loading both training and unlabeled instances.
      * @throws Exception on error.
      */
     private void loadData(boolean isTraining) throws Exception {
-        InstanceQuery query = null;
+        logger.info("Loading {} data.", isTraining ? "training" : "training and unlabeled");
 
+        InstanceQuery query = null;
         try {
             query = new InstanceQuery();
-            query.setUsername("nobody");
-            query.setPassword("");
 
             if (isTraining) {
-                query.setQuery(trainingQuery);
-                this.training_data = setUpData(query.retrieveInstances(), null);
+                query.setQuery(Storage.TRAINING_QUERY);
+                Instances instances = query.retrieveInstances();
+
+                this.training_data = setUpData(instances, null);
+                this.training_data.randomize(new Random());
+            } else {
+                query.setQuery(Storage.CLASSIFICATION_QUERY);
+                Instances universe = query.retrieveInstances();
+
+                /**
+                 * Load the whole universe of data:
+                 * training and unlabeled.
+                 */
+                universe = setUpData(universe, null);
+                assert (universe.attribute(Storage.UTC_OFFSET).type() == 1) : "Got bad types from database";
+
+                this.training_data = new Instances(universe, universe.numInstances() - 200);
+                this.classification_data = new Instances(universe, 200);
+                final Attribute class_attribute = universe.classAttribute();
+
+                /**
+                 * Split the data in training and unlabeled.
+                 * We could use a filter, but this is more efficient in main memory.
+                 */
+                for (int i = universe.numInstances() - 1; i >= 0; i--) {
+                    Instance instance = universe.instance(i);
+                    universe.delete(i);
+
+                    if (Utils.isMissingValue(instance.value(class_attribute))) {
+                        this.classification_data.add(instance);
+                    } else {
+                        this.training_data.add(instance);
+                    }
+                }
+
+                assert (this.classification_data.numInstances() <= Constants.classification_limit) :
+                        "Bad number of classification data (" +
+                                this.classification_data.numInstances() +
+                                "), filter is likely to be not working.";
+
+                assert this.training_data.equalHeadersMsg(this.classification_data) == null :
+                        "Bad instances headers: " + this.training_data.equalHeadersMsg(this.classification_data);
+
+                /**
+                 * Remove the ID from the training data.
+                 */
+                Remove remove = new Remove();
+                remove.setAttributeIndices(String.format("%d", this.training_data.attribute(Storage.ID).index() + 1));
+                remove.setInputFormat(this.training_data);
+                this.training_data = Filter.useFilter(this.training_data, remove);
                 this.training_data.randomize(new Random());
 
-            } else {
-                query.setQuery(classificationQuery);
-                this.classification_data = setUpData(query.retrieveInstances(), null);
+                assert this.training_data.numAttributes() == this.classification_data.numAttributes() - 1 :
+                        "Training data filtering is not working, bad number of attributes.";
+                assert this.training_data.attribute(Storage.ID) == null :
+                        "ID attributes can still be found after filtering!";
             }
-
         } catch (Exception e) {
             logger.error("Error while executing DB query", e);
             throw e;
@@ -274,12 +299,6 @@ class Learner {
             Constructor<? extends AbstractClassifier> constructor = classifier_class.getConstructor();
             AbstractClassifier abstractClassifier = constructor.newInstance();
 
-            Remove remove = new Remove();
-            Attribute idAttr = this.training_data.attribute(Storage.ID);
-            remove.setAttributeIndices(
-                    String.format("%d", idAttr.index() + 1)
-            );
-
             this.classifier = abstractClassifier;
             setupLearner();
 
@@ -313,10 +332,39 @@ class Learner {
         final int trainingSize = (int) Math.round(this.training_data.numInstances() * (1.0 - percentage_split));
         final int testingSize = this.training_data.numInstances() - trainingSize;
 
-        final Instances train = new Instances(training_data, 0, trainingSize);
-        final Instances test = new Instances(training_data, trainingSize, testingSize);
+        final Instances train = new Instances(this.training_data, 0, trainingSize);
+        final Instances test = new Instances(this.training_data, trainingSize, testingSize);
 
         return new AbstractMap.SimpleEntry<>(train, test);
+    }
+
+    /**
+     * Train the classifier on the given instances.
+     *
+     * @param training_data the instances to use.
+     * @throws Exception if the classifier encounters and error while being built.
+     */
+    public void trainClassifier(Instances training_data) throws Exception {
+        if (this.classifier instanceof UpdateableClassifier) {
+            logger.info("Building updateable classifier.");
+            UpdateableClassifier classifier = (UpdateableClassifier) this.classifier;
+
+            /**
+             * We always have to call @{@link AbstractClassifier#buildClassifier(Instances)}.
+             * We thus build a new Instances set from the dataset.
+             * Then, we start feeding the classifier.
+             */
+            this.classifier.buildClassifier(new Instances(training_data, 0));
+
+            for (int i = training_data.numInstances() - 1; i >= 0; i--) {
+                Instance instance = training_data.instance(i);
+                training_data.delete(i);
+
+                classifier.updateClassifier(instance);
+            }
+        } else {
+            this.classifier.buildClassifier(training_data);
+        }
     }
 
     /**
@@ -327,6 +375,13 @@ class Learner {
      * @param output_path optional path to store a CSV file with the results.
      */
     public void buildAndClassify(String output_path) {
+        try {
+            this.loadData(false);
+        } catch (Exception e) {
+            logger.fatal("Error while loading training and unlabeled data", e);
+            return;
+        }
+
         CSVPrinter csvFilePrinter = null;
         FileWriter fileWriter = null;
 
@@ -348,9 +403,7 @@ class Learner {
         try {
             logger.info("Building classifier {}...",
                     this.classifier.getClass().getSimpleName());
-            this.classifier.buildClassifier(this.training_data);
-
-            this.loadData(false);
+            this.trainClassifier(this.training_data);
         } catch (Exception e) {
             logger.fatal("Error while building classifier for new instances.", e);
 
@@ -366,10 +419,24 @@ class Learner {
         final Attribute attribute_utc_offset = this.classification_data.attribute(Storage.UTC_OFFSET);
         final Attribute attribute_timezone = this.classification_data.attribute(Storage.TIMEZONE);
 
+        Remove remove;
+        try {
+            remove = new Remove();
+            remove.setAttributeIndices(String.format("%d", attribute_id.index() + 1));
+            remove.setInputFormat(this.classification_data);
+        } catch (Exception e) {
+            logger.error("Error while building remove filter for unlabeled instances", e);
+            return;
+        }
+
         for (Instance i : this.classification_data) {
+            remove.input(i);
+            Instance trimmedInstance = remove.output();
+
             try {
-                double classification = this.classifier.classifyInstance(i);
-                long id = Double.valueOf(i.value(attribute_id)).longValue();
+                final double classification = this.classifier.classifyInstance(trimmedInstance);
+
+                final long id = Double.valueOf(i.value(attribute_id)).longValue();
                 Object[] values = {
                         id,
                         String.format(Constants.twitter_user_intent, id),
@@ -394,10 +461,10 @@ class Learner {
                  * If we don't know in advance the attributes value space,
                  * we can't classify those instances.
                  */
-                logger.debug("Classification - id: {}, class: UNAVAILABLE",
-                        Double.valueOf(i.value(this.training_data.attribute(Storage.ID))).longValue()
+                logger.warn("Classification - id: {}, class: UNAVAILABLE",
+                        Double.valueOf(i.value(attribute_id)).longValue()
                 );
-                logger.debug("Exception stack trace", e);
+                logger.error("Error while classifying unlabeled instance", e);
             }
         }
 
@@ -416,9 +483,15 @@ class Learner {
      * @return the evaluation of the classifier.
      */
     public Evaluation buildAndEvaluate(float evaluation_rate) {
-        assert evaluation_rate > 0;
+        try {
+            this.loadData(true);
+        } catch (Exception e) {
+            logger.error("Error while loading training data.", e);
+            return null;
+        }
 
         Evaluation eval = null;
+        assert evaluation_rate > 0;
         try {
             if (evaluation_rate < 1) {
                 logger.info("Building and evaluating classifier {} with testing percentage {}...",
@@ -426,7 +499,7 @@ class Learner {
 
                 Map.Entry<Instances, Instances> data = splitTrainingTestData(evaluation_rate);
 
-                this.classifier.buildClassifier(data.getKey());
+                this.trainClassifier(data.getKey());
 
                 eval = new Evaluation(data.getKey());
                 eval.evaluateModel(this.classifier, data.getValue());
@@ -450,13 +523,5 @@ class Learner {
         }
 
         return eval;
-    }
-
-    public Instances getTrainingData() {
-        return this.training_data;
-    }
-
-    public AbstractClassifier getClassifier() {
-        return this.classifier;
     }
 }
