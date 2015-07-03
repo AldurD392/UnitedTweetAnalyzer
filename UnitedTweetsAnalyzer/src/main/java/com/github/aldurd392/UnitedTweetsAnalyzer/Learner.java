@@ -456,6 +456,7 @@ class Learner {
                     this.training_data.classAttribute().value((int) classification),
             };
 
+            logger.debug("Classification - {} -> {}", i.toString(), values[6]);
             if (csvFilePrinter != null) {
                 try {
                     csvFilePrinter.printRecord(values);
