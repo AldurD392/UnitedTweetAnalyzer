@@ -196,7 +196,7 @@ class Learner {
                     }
                 }
 
-                assert (this.classification_data.numInstances() == Constants.classification_limit) :
+                assert (this.classification_data.numInstances() <= Constants.classification_limit) :
                         "Bad number of classification data (" +
                                 this.classification_data.numInstances() +
                                 "), filter is likely to be not working.";
