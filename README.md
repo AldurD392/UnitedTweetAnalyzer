@@ -39,8 +39,17 @@ In addition to the docs, the source code should be readable and heavily commente
 This project requires a valid Twitter API key in order to run (specifically, it is needed to launch the Store task, see later).
 
 ### Twitter OAuth
-Edit/create the `twitter4j.properties` file within the `UnitedTweetsAnalyzer` directory and enter yours before continuing.
+Edit/create the `twitter4j.properties` file within the `UnitedTweetsAnalyzer` directory and enter your OAuth tokens before continuing.
 More detailed docs related to the Twitter4J configuration are available [here](http://twitter4j.org/en/configuration.html).
+
+We also like to disable debug and Twitter4J's logger:
+
+```
+# twitter4j.properties
+
+loggerFactory=twitter4j.NullLoggerFactory
+debug=false 
+```
 
 ### Assertion checks
 We've made a large use of the Java assertions in our code.
