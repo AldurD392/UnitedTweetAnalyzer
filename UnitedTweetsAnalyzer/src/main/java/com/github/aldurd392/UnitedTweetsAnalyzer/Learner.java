@@ -5,6 +5,7 @@ import org.apache.commons.csv.CSVPrinter;
 import org.apache.commons.io.IOUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
 import weka.classifiers.AbstractClassifier;
 import weka.classifiers.Evaluation;
 import weka.classifiers.UpdateableClassifier;
@@ -20,7 +21,9 @@ import weka.classifiers.trees.*;
 import weka.core.*;
 import weka.experiment.InstanceQuery;
 import weka.filters.Filter;
+import weka.filters.unsupervised.attribute.NominalToString;
 import weka.filters.unsupervised.attribute.Remove;
+import weka.filters.unsupervised.attribute.StringToWordVector;
 
 import java.io.FileWriter;
 import java.io.IOException;
@@ -123,12 +126,15 @@ class Learner {
      * @param filter    if set applies the filter on the input instances.
      * @return the set up instances.
      */
-    private Instances setUpData(Instances instances, Filter filter) {
+    private Instances setUpData(Instances instances, Filter[] filters) {
         Instances newInstances = instances;
 
-        if (filter != null) {
+        if (filters != null) {
             try {
-                newInstances = Filter.useFilter(instances, filter);
+            		for(Filter filter : filters){
+            			filter.setInputFormat(newInstances);
+            			newInstances = Filter.useFilter(newInstances, filter);
+            		}
             } catch (Exception e) {
                 logger.warn("Cannot filter data. Ignoring supplied filter.", e);
             }
@@ -159,22 +165,49 @@ class Learner {
         InstanceQuery query = null;
         try {
             query = new InstanceQuery();
+            
+            NominalToString nomToStringFilter = new NominalToString();
+            StringToWordVector stringFilter = new StringToWordVector();
+            
+            Filter[] filters = {nomToStringFilter, stringFilter};
+
+            Attribute locAttr = null;
 
             if (isTraining) {
                 query.setQuery(Storage.TRAINING_QUERY);
                 Instances instances = query.retrieveInstances();
 
-                this.training_data = setUpData(instances, null);
+                locAttr = instances.attribute(Storage.LOCATION);
+                                
+                nomToStringFilter.setAttributeIndexes(
+                        String.format("%d", locAttr.index() + 1)
+                    );
+
+                stringFilter.setAttributeIndices(
+                        String.format("%d", locAttr.index() + 1)
+                    );
+                                          
+                this.training_data = setUpData(instances, filters);
                 this.training_data.randomize(new Random());
             } else {
                 query.setQuery(Storage.CLASSIFICATION_QUERY);
                 Instances universe = query.retrieveInstances();
+                
+                locAttr = universe.attribute(Storage.LOCATION);
+                
+                nomToStringFilter.setAttributeIndexes(
+                        String.format("%d", locAttr.index() + 1)
+                    );
+                
+                stringFilter.setAttributeIndices(
+                        String.format("%d", locAttr.index() + 1)
+                    );
 
                 /**
                  * Load the whole universe of data:
                  * training and unlabeled.
                  */
-                universe = setUpData(universe, null);
+                universe = setUpData(universe, filters);
                 assert (universe.attribute(Storage.UTC_OFFSET).type() == 1) : "Got bad types from database";
 
                 this.training_data = new Instances(universe, universe.numInstances() - 200);
@@ -449,7 +482,7 @@ class Learner {
             final Object[] values = {
                     id,
                     String.format(Constants.twitter_user_intent, id),
-                    i.stringValue(attribute_location),
+//                    i.stringValue(attribute_location),
                     i.stringValue(attribute_lang),
                     i.stringValue(attribute_utc_offset),
                     i.stringValue(attribute_timezone),
@@ -523,3 +556,4 @@ class Learner {
         return eval;
     }
 }
+
