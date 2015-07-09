@@ -123,20 +123,24 @@ class Learner {
      * and if specified it apply the input filter.
      *
      * @param instances to set up.
-     * @param filter    if set applies the filter on the input instances.
+     * @param filters   if set applies the filters on the input instances
+     *                  (in order).
      * @return the set up instances.
      */
     private Instances setUpData(Instances instances, Filter[] filters) {
         Instances newInstances = instances;
 
         if (filters != null) {
-            try {
-            		for(Filter filter : filters){
-            			filter.setInputFormat(newInstances);
-            			newInstances = Filter.useFilter(newInstances, filter);
-            		}
-            } catch (Exception e) {
-                logger.warn("Cannot filter data. Ignoring supplied filter.", e);
+            for (Filter filter : filters) {
+                try {
+                    filter.setInputFormat(newInstances);
+                    newInstances = Filter.useFilter(newInstances, filter);
+                } catch (Exception e) {
+                    logger.warn(
+                            "Cannot apply specified filter {}. Ignoring it.", filter.toString(),
+                            e
+                    );
+                }
             }
         }
 
@@ -154,6 +158,9 @@ class Learner {
      * and the we spit them.
      * In this way the headers of the Instances set will contain the correct
      * information.
+     * In addition, we convert the "location" attribute to a vector of words.
+     * It is nominal in our dataset, so we convert it to a string and then we
+     * split it.
      *
      * @param isTraining if set we are loading training instances.
      *                   Otherwise, we're loading both training and unlabeled instances.
@@ -165,43 +172,50 @@ class Learner {
         InstanceQuery query = null;
         try {
             query = new InstanceQuery();
-            
+
             NominalToString nomToStringFilter = new NominalToString();
             StringToWordVector stringFilter = new StringToWordVector();
-            
+            // TODO: configure the StringToWordVector filter,
+            // limiting the length of the vector.
+
+            // TODO: Do we need to set the input format, BTW?
+
             Filter[] filters = {nomToStringFilter, stringFilter};
 
-            Attribute locAttr = null;
-
+            String locationAttributeString;
             if (isTraining) {
                 query.setQuery(Storage.TRAINING_QUERY);
                 Instances instances = query.retrieveInstances();
 
-                locAttr = instances.attribute(Storage.LOCATION);
-                                
+                locationAttributeString = String.format(
+                        "%d", instances.attribute(Storage.LOCATION).index() + 1
+                );
+
                 nomToStringFilter.setAttributeIndexes(
-                        String.format("%d", locAttr.index() + 1)
-                    );
+                        locationAttributeString
+                );
 
                 stringFilter.setAttributeIndices(
-                        String.format("%d", locAttr.index() + 1)
-                    );
-                                          
+                        locationAttributeString
+                );
+
                 this.training_data = setUpData(instances, filters);
                 this.training_data.randomize(new Random());
             } else {
                 query.setQuery(Storage.CLASSIFICATION_QUERY);
                 Instances universe = query.retrieveInstances();
-                
-                locAttr = universe.attribute(Storage.LOCATION);
-                
+
+                locationAttributeString = String.format(
+                        "%d", universe.attribute(Storage.LOCATION).index() + 1
+                );
+
                 nomToStringFilter.setAttributeIndexes(
-                        String.format("%d", locAttr.index() + 1)
-                    );
-                
+                        locationAttributeString
+                );
+
                 stringFilter.setAttributeIndices(
-                        String.format("%d", locAttr.index() + 1)
-                    );
+                        locationAttributeString
+                );
 
                 /**
                  * Load the whole universe of data:
@@ -446,8 +460,8 @@ class Learner {
             return;
         }
 
+        // TODO: print locations as readable string
         final Attribute attribute_id = this.classification_data.attribute(Storage.ID);
-        final Attribute attribute_location = this.classification_data.attribute(Storage.LOCATION);
         final Attribute attribute_lang = this.classification_data.attribute(Storage.LANG);
         final Attribute attribute_utc_offset = this.classification_data.attribute(Storage.UTC_OFFSET);
         final Attribute attribute_timezone = this.classification_data.attribute(Storage.TIMEZONE);
@@ -482,7 +496,6 @@ class Learner {
             final Object[] values = {
                     id,
                     String.format(Constants.twitter_user_intent, id),
-//                    i.stringValue(attribute_location),
                     i.stringValue(attribute_lang),
                     i.stringValue(attribute_utc_offset),
                     i.stringValue(attribute_timezone),
