@@ -22,6 +22,7 @@ import weka.core.stopwords.StopwordsHandler;
 import weka.experiment.InstanceQuery;
 import weka.filters.Filter;
 import weka.filters.unsupervised.attribute.NominalToString;
+import weka.filters.unsupervised.attribute.NumericToNominal;
 import weka.filters.unsupervised.attribute.Remove;
 import weka.filters.unsupervised.attribute.StringToWordVector;
 
@@ -177,14 +178,16 @@ class Learner {
 
             NominalToString nomToStringFilter = new NominalToString();
             StringToWordVector stringFilter = new StringToWordVector();
+            NumericToNominal numericToNominal = new NumericToNominal();
 
+            stringFilter.setDoNotOperateOnPerClassBasis(true);
+            stringFilter.setOutputWordCounts(false);
             final int wordsToKeep = 100;
             stringFilter.setWordsToKeep(wordsToKeep);
 //            stringFilter.setIDFTransform(true);
-            stringFilter.setTFTransform(true);
+//            stringFilter.setTFTransform(true);
             stringFilter.setStemmer(null);
             stringFilter.setAttributeNamePrefix(LOCATION_PREFIX);
-            stringFilter.setOutputWordCounts(false);
 
             /**
              * Remove from the WordVector all those words with length 1.
@@ -196,7 +199,7 @@ class Learner {
                 }
             });
 
-            Filter[] filters = {nomToStringFilter, stringFilter};
+            Filter[] filters = {nomToStringFilter, stringFilter, numericToNominal};
 
             String locationAttributeString;
             if (isTraining) {
@@ -223,6 +226,7 @@ class Learner {
 
                 for (Attribute attribute : Collections.list(this.training_data.enumerateAttributes())) {
                     logger.debug(attribute.name());
+                    logger.debug(attribute.type());
                 }
                 logger.debug(this.training_data.classAttribute().name());
             } else {
@@ -519,11 +523,12 @@ class Learner {
             StringBuilder location = new StringBuilder();
             for (Attribute attribute : Collections.list(i.enumerateAttributes())) {
                 if (attribute.name().startsWith(LOCATION_PREFIX) &&
-                        (int) i.value(attribute) == 1) {
+                        i.value(attribute) > 0) {
                     location.append(attribute.name().substring(LOCATION_PREFIX.length()));
                     location.append(" ");
                 }
             }
+
 
             final Object[] values = {
                     id,
