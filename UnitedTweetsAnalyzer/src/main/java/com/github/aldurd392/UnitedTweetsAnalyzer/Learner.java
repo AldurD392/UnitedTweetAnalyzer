@@ -182,13 +182,11 @@ class Learner {
 
             stringFilter.setDoNotOperateOnPerClassBasis(true);
             stringFilter.setOutputWordCounts(false);
-            final int wordsToKeep = 100;
+            final int wordsToKeep = 500;
             stringFilter.setWordsToKeep(wordsToKeep);
             stringFilter.setStemmer(null);
             stringFilter.setAttributeNamePrefix(LOCATION_PREFIX);
-
-//            stringFilter.setIDFTransform(true);
-//            stringFilter.setTFTransform(true);
+            stringFilter.setIDFTransform(true);
 
             /**
              * Remove from the WordVector all those words with length 1.
@@ -196,7 +194,9 @@ class Learner {
             stringFilter.setStopwordsHandler(new StopwordsHandler() {
                 @Override
                 public boolean isStopword(String word) {
-                    return word.length() <= 1;
+                    return word.length() <= 1 ||
+                            (word.length() == 2 && !Constants.countryCodes.contains(word)) ||
+                            Constants.stopWords.contains(word);
                 }
             });
 
@@ -237,9 +237,7 @@ class Learner {
 
                 for (Attribute attribute : Collections.list(this.training_data.enumerateAttributes())) {
                     logger.debug(attribute.name());
-                    logger.debug(attribute.type());
                 }
-                logger.debug(this.training_data.classAttribute().name());
             } else {
                 query.setQuery(Storage.CLASSIFICATION_QUERY);
                 Instances universe = query.retrieveInstances();
