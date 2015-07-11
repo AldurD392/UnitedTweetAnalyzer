@@ -5,7 +5,6 @@ import org.apache.commons.csv.CSVPrinter;
 import org.apache.commons.io.IOUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
 import weka.classifiers.AbstractClassifier;
 import weka.classifiers.Evaluation;
 import weka.classifiers.UpdateableClassifier;
@@ -19,6 +18,7 @@ import weka.classifiers.meta.AdaBoostM1;
 import weka.classifiers.rules.PART;
 import weka.classifiers.trees.*;
 import weka.core.*;
+import weka.core.stopwords.StopwordsHandler;
 import weka.experiment.InstanceQuery;
 import weka.filters.Filter;
 import weka.filters.unsupervised.attribute.NominalToString;
@@ -175,10 +175,22 @@ class Learner {
 
             NominalToString nomToStringFilter = new NominalToString();
             StringToWordVector stringFilter = new StringToWordVector();
-            // TODO: configure the StringToWordVector filter,
-            // limiting the length of the vector.
 
-            // TODO: Do we need to set the input format, BTW?
+            final int wordsToKeep = 100;
+            stringFilter.setWordsToKeep(wordsToKeep);
+//            stringFilter.setIDFTransform(true);
+            stringFilter.setTFTransform(true);
+            stringFilter.setStemmer(null);
+
+            /**
+             * Remove from the WordVector all those words with length 1.
+             */
+            stringFilter.setStopwordsHandler(new StopwordsHandler() {
+                @Override
+                public boolean isStopword(String word) {
+                    return word.length() <= 1;
+                }
+            });
 
             Filter[] filters = {nomToStringFilter, stringFilter};
 
@@ -201,6 +213,14 @@ class Learner {
 
                 this.training_data = setUpData(instances, filters);
                 this.training_data.randomize(new Random());
+
+                assert (this.training_data.numAttributes() > 3 + wordsToKeep) :
+                        "StringToWordVector doesn't seem to be working!";
+
+                for (Attribute attribute : Collections.list(this.training_data.enumerateAttributes())) {
+                    logger.debug(attribute.name());
+                }
+                logger.debug(this.training_data.classAttribute().name());
             } else {
                 query.setQuery(Storage.CLASSIFICATION_QUERY);
                 Instances universe = query.retrieveInstances();
@@ -460,11 +480,23 @@ class Learner {
             return;
         }
 
-        // TODO: print locations as readable string
         final Attribute attribute_id = this.classification_data.attribute(Storage.ID);
         final Attribute attribute_lang = this.classification_data.attribute(Storage.LANG);
         final Attribute attribute_utc_offset = this.classification_data.attribute(Storage.UTC_OFFSET);
         final Attribute attribute_timezone = this.classification_data.attribute(Storage.TIMEZONE);
+
+        final int[] staticAttributes = {
+                attribute_id.index(),
+                attribute_lang.index(),
+                attribute_utc_offset.index(),
+                attribute_timezone.index(),
+        };
+        int locationAttributes = -1;
+        for (int i : staticAttributes) {
+            if (i > locationAttributes) {
+                locationAttributes = i;
+            }
+        }
 
         Remove remove;
         try {
@@ -493,9 +525,20 @@ class Learner {
                 return;
             }
 
+            StringBuilder location = new StringBuilder();
+            for (int j = locationAttributes; j < i.numAttributes(); j++) {
+                Attribute attribute = i.attribute(j);
+
+                if (Double.valueOf(i.value(attribute)).equals(1.0)) {
+                    location.append(attribute.name());
+                    location.append(" ");
+                }
+            }
+
             final Object[] values = {
                     id,
                     String.format(Constants.twitter_user_intent, id),
+                    location.toString(),
                     i.stringValue(attribute_lang),
                     i.stringValue(attribute_utc_offset),
                     i.stringValue(attribute_timezone),
