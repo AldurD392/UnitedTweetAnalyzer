@@ -184,10 +184,11 @@ class Learner {
             stringFilter.setOutputWordCounts(false);
             final int wordsToKeep = 100;
             stringFilter.setWordsToKeep(wordsToKeep);
-//            stringFilter.setIDFTransform(true);
-//            stringFilter.setTFTransform(true);
             stringFilter.setStemmer(null);
             stringFilter.setAttributeNamePrefix(LOCATION_PREFIX);
+
+//            stringFilter.setIDFTransform(true);
+//            stringFilter.setTFTransform(true);
 
             /**
              * Remove from the WordVector all those words with length 1.
@@ -218,6 +219,16 @@ class Learner {
                         locationAttributeString
                 );
 
+                numericToNominal.setAttributeIndicesArray(
+                        new int[]{
+                                instances.attribute(Storage.UTC_OFFSET).index(),
+                                instances.attribute(Storage.LANG).index(),
+                                instances.attribute(Storage.TIMEZONE).index(),
+                                instances.attribute(Storage.COUNTRY).index(),
+                        }
+                );
+                numericToNominal.setInvertSelection(true);
+
                 this.training_data = setUpData(instances, filters);
                 this.training_data.randomize(new Random());
 
@@ -244,6 +255,17 @@ class Learner {
                 stringFilter.setAttributeIndices(
                         locationAttributeString
                 );
+
+                numericToNominal.setAttributeIndicesArray(
+                        new int[]{
+                                universe.attribute(Storage.ID).index(),
+                                universe.attribute(Storage.UTC_OFFSET).index(),
+                                universe.attribute(Storage.LANG).index(),
+                                universe.attribute(Storage.TIMEZONE).index(),
+                                universe.attribute(Storage.COUNTRY).index(),
+                        }
+                );
+                numericToNominal.setInvertSelection(true);
 
                 /**
                  * Load the whole universe of data:
