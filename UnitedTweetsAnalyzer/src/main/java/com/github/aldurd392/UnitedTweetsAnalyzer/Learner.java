@@ -40,6 +40,8 @@ import java.util.regex.Pattern;
 class Learner {
     private final static Logger logger = LogManager.getLogger(Learner.class.getSimpleName());
 
+    private final static String LOCATION_PREFIX = "_LOCATION";
+
     /**
      * This map will let you add other classifiers to this class.
      * You can specify all those classifiers that inherit from AbstractClassifier
@@ -181,6 +183,8 @@ class Learner {
 //            stringFilter.setIDFTransform(true);
             stringFilter.setTFTransform(true);
             stringFilter.setStemmer(null);
+            stringFilter.setAttributeNamePrefix(LOCATION_PREFIX);
+            stringFilter.setOutputWordCounts(false);
 
             /**
              * Remove from the WordVector all those words with length 1.
@@ -485,19 +489,6 @@ class Learner {
         final Attribute attribute_utc_offset = this.classification_data.attribute(Storage.UTC_OFFSET);
         final Attribute attribute_timezone = this.classification_data.attribute(Storage.TIMEZONE);
 
-        final int[] staticAttributes = {
-                attribute_id.index(),
-                attribute_lang.index(),
-                attribute_utc_offset.index(),
-                attribute_timezone.index(),
-        };
-        int locationAttributes = -1;
-        for (int i : staticAttributes) {
-            if (i > locationAttributes) {
-                locationAttributes = i;
-            }
-        }
-
         Remove remove;
         try {
             remove = new Remove();
@@ -526,11 +517,10 @@ class Learner {
             }
 
             StringBuilder location = new StringBuilder();
-            for (int j = locationAttributes; j < i.numAttributes(); j++) {
-                Attribute attribute = i.attribute(j);
-
-                if (Double.valueOf(i.value(attribute)).equals(1.0)) {
-                    location.append(attribute.name());
+            for (Attribute attribute : Collections.list(i.enumerateAttributes())) {
+                if (attribute.name().startsWith(LOCATION_PREFIX) &&
+                        (int) i.value(attribute) == 1) {
+                    location.append(attribute.name().substring(LOCATION_PREFIX.length()));
                     location.append(" ");
                 }
             }
