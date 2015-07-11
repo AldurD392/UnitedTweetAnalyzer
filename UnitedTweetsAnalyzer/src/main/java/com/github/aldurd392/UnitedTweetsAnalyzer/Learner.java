@@ -182,7 +182,8 @@ class Learner {
 
             stringFilter.setDoNotOperateOnPerClassBasis(true);
             stringFilter.setOutputWordCounts(false);
-            final int wordsToKeep = 500;
+
+            final int wordsToKeep = 750;
             stringFilter.setWordsToKeep(wordsToKeep);
             stringFilter.setStemmer(null);
             stringFilter.setAttributeNamePrefix(LOCATION_PREFIX);

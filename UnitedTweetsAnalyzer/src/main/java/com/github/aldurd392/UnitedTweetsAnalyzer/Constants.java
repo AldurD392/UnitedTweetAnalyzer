@@ -119,6 +119,9 @@ class Constants {
                     "of", "where", "at", "wherev", "www",
                     "the", "town", "street", "state", "point",
                     "planet", "place", "near", "nation", "mind",
+                    "http", "home", "from", "you", "write", "worth",
+                    "wonderland", "with", "god", "all", "and", "be",
+                    "big",
             }
     ));
     static {
