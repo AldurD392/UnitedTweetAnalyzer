@@ -44,12 +44,8 @@ class Geography {
      * But in our case n is small (USA has ~50 states), so it's a good
      * trade-off between memory and time.
      */
-    final private ArrayList<Map.Entry<String, MultiPolygon>> polygons;
+    final private List<Map.Entry<String, MultiPolygon>> polygons;
 
-    /*
-     * Create a point only once and then, every time, update its coordinates.
-     */
-    final private Point point = JTSFactoryFinder.getGeometryFactory().createPoint(new Coordinate());
 
     /**
      * Create the Geography object.
@@ -73,8 +69,8 @@ class Geography {
             final String geometryAttributeName = schema.getGeometryDescriptor().getLocalName();
 
             final SimpleFeatureCollection features = featureSource.getFeatures();
-            this.polygons = new ArrayList<>(features.size());
 
+            final ArrayList<Map.Entry<String, MultiPolygon>> polygons = new ArrayList<>(features.size());
             iterator = features.features();
             while (iterator.hasNext()) {
                 SimpleFeature feature = iterator.next();
@@ -82,8 +78,10 @@ class Geography {
                 MultiPolygon polygon = (MultiPolygon) feature.getAttribute(geometryAttributeName);
                 String name = (String) feature.getAttribute(STATE_NAME);
 
-                this.polygons.add(new AbstractMap.SimpleImmutableEntry<>(name, polygon));
+                polygons.add(new AbstractMap.SimpleImmutableEntry<>(name, polygon));
             }
+
+            this.polygons = Collections.unmodifiableList(polygons);
         } finally {
             if (iterator != null) {
                 iterator.close();
@@ -101,9 +99,7 @@ class Geography {
      * @return the name of the coordinate state or UNKNOWN if not found.
      */
     public String query(Coordinate coordinate) {
-        point.getCoordinate().setOrdinate(0, coordinate.getOrdinate(0));
-        point.getCoordinate().setOrdinate(1, coordinate.getOrdinate(1));
-        point.geometryChanged();  // Notify the geometry that a point's changed.
+        final Point point = JTSFactoryFinder.getGeometryFactory().createPoint(coordinate);
 
         /** Before trying to locate the country,
          * we make sure that the point lies within
