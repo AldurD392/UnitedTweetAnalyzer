@@ -87,6 +87,9 @@ class Storage {
     private final static Pattern re_letters = Pattern.compile("[^\\p{L}\\p{Z}]");
     private final static Pattern re_spaces = Pattern.compile("\\s+");
 
+    /**
+     * The {@link Geography} instances used to assign a country to each tweet.
+     */
     private final Geography geography;
 
     /**
@@ -176,7 +179,7 @@ class Storage {
      */
     private void initDatabase() throws SQLException {
         try (Statement stmt = this.c.createStatement()) {
-            String userTable = "CREATE TABLE " + TABLE_USER +
+            final String userTable = "CREATE TABLE " + TABLE_USER +
                     String.format(" (%s UNSIGNED BIG INT PRIMARY KEY NOT NULL," +
                                     " %s TEXT NOT NULL," +
                                     " %s VARCHAR(10)," +
@@ -186,7 +189,7 @@ class Storage {
                             ID, USERNAME, LANG, LOCATION, UTC_OFFSET, TIMEZONE);
             stmt.executeUpdate(userTable);
 
-            String tweetTable = "CREATE TABLE " + TABLE_TWEET +
+            final String tweetTable = "CREATE TABLE " + TABLE_TWEET +
                     String.format(" (%s UNSIGNED BIG INT PRIMARY KEY NOT NULL," +
                                     " %s FLOAT NOT NULL," +
                                     " %s FLOAT NOT NULL," +
@@ -212,7 +215,7 @@ class Storage {
      */
     private void prepareClassificationView() throws SQLException {
         try (Statement stmt = this.c.createStatement()) {
-            String classificationView = String.format(
+            final String classificationView = String.format(
                     "CREATE VIEW %s AS " +
                             "SELECT * " +
                             "FROM (SELECT " +
@@ -278,7 +281,7 @@ class Storage {
             return null;
         }
 
-        StringBuilder stringBuffer = new StringBuilder();
+        final StringBuilder stringBuffer = new StringBuilder();
         for (String w : location.split(" ")) {
             stringBuffer.append(stemmer.stem(w));
             stringBuffer.append(" ");
@@ -324,7 +327,7 @@ class Storage {
         }
         */
 
-        String insert = String.format(
+        final String insert = String.format(
                 "INSERT INTO %s " +
                         "(%s, %s, %s, %s, %s, %s) " +
                         "VALUES (?, ?, ?, ?, ?, ?);",
@@ -401,7 +404,7 @@ class Storage {
                 return;
             }
 
-            String country = this.geography.query(
+            final String country = this.geography.query(
                     new Coordinate(geoLocation.getLongitude(), geoLocation.getLatitude())
             );
             assert country != null;
@@ -442,7 +445,7 @@ class Storage {
              * avoid some Russians hackers to
              * SQL inject us! :)
              */
-            String insert = String.format(
+            final String insert = String.format(
                     "INSERT INTO %s (%s, %s, %s, %s, %s) VALUES (?, ?, ?, ?, ?);",
                     TABLE_TWEET,
                     ID, LAT, LON, COUNTRY, USER_ID);
