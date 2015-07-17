@@ -71,6 +71,7 @@ As an example:
 $ java -jar target/UnitedTwitterAnalyzer-jar-with-dependencies.jar -h
 
 usage: UnitedTweetsAnalyzer
+usage: UnitedTweetsAnalyzer
  -b,--stream_bias <arg>       bias applied to the stream [all, geo,
                               all_geo]
  -c,--learner_cl <arg>        specify the Weka-like configuration of the
@@ -89,6 +90,11 @@ usage: UnitedTweetsAnalyzer
                               unsupervised classification results
  -s,--shapefile <arg>         shapefile path
  -t,--task <arg>              set the task type [store, learn, classify]
+ -w,--learner_words <arg>     If set to a numeric value greater than 0,
+                              while learning / classifying convert the
+                              location attribute to a vector of words.The
+                              default of 0 means that this feature is
+                              disabled
 ```
 
 The `-t` option is always required.
@@ -143,6 +149,8 @@ Values greater than 1 will enable k-fold cross-validation.
 The `-c` flag lets you specify the command line arguments for the learner.
 It is ignored with `-l all`.
 
+The `-w` flag enable the LocationToWordsVector feature (see later).
+
 #### Classify task
 This task lets you label new instances.
 It will sample them from those in our database who don't have an associated geographic position.
@@ -154,82 +162,144 @@ $ java -jar target/UnitedTwitterAnalyzer-jar-with-dependencies.jar -t classify -
 ```
 
 Note that, by supplying the `-o` flag, we're storing the classification output in an Excel readable CSV file.
-The `-c` flag is also supported here (see previous task).
+The `-c` and `-w` flags are also supported here (see previous task).
+
+## Location attribute to vector of words
+Supplying the `-w NUMBER` flag to either the learning or classification tasks enables the conversion of the users' location attribute (usually a nominal value) to a vector of words.
+This implies many different things:
+
+* The learning process employs now slightly different principles: each single word in the location attribute space is examined and ranked accordingly to its IDF. Only the best words are kept.
+* Performance decrease: we have a number of attributes that is not fixed anymore, but is proportional to the value specified with the flag.
+* Variable learner precision: greater number of words to keep imply greater learning precision and greater requirements in terms of time and space.
+
+### When should I use this feature?
+As always in this field, it depends on you needs.
+This feature completely conforms to the state of the art techniques in this kind of classification task, but comes with a great performance cost.
+As a consequence, it could weight toward one or the other the trade-off between learning precision and time/space performances.
+Finally, please take a look to our experimental results.
+
+We tried different configurations on our machines.
+Because of their hardware limitations, we could not experiment with high values of the `-w` flag, having to stop at 700.
+The results we found are slightly worst than the ones obtained with this feature disabled. 
+Nonetheless, there is a clear indication that, by providing higher number of words to keep, we'd found better results.
 
 ## Experimental results
 We've experimented with lot of different settings and we'll report here some of our experimental results.
 
 ### Dataset
 We've set the bounding box to the one containing the whole USA.
-We've gathered a dataset of 700k users and 800k tweets.
+We've gathered a dataset of 1kk users and 2kk tweets.
 The tweets represent our ground truth, because they have an associated region and are linked to a Twitter user.
 
-Among those tweets, ~400k had an associated USA region.
+Among those tweets, ~700k had an associated USA region.
 The remaining, on the other side, were foreign.
 Both those information have been exploited by our algorithms in order to learn when to classify a user inside one of the USA countries or outside the states.
 Note that the size of USA/foreign tweets is roughly the same. We'll be in fact testing the precision of the algorithms on unsupervised data, i.e. a sample of the entire tweet stream. As a consequence, it's more likely to see someone from the whole world than from the USA, and the algorithms has to consequently react.
 
 Our experiments were often limited by the size of our physical main memory, but we've stretched the performance of our system to the maximum.
 
-### Naive Bayes
-The following evaluation statistics have been obtained by using 10-fold cross validation.
+### Results w/o LocationToWordsVector
+We've found the following results without enabling the LocationToWordsVector feature (default behaviour).
+
+#### Naive Bayes
+The following evaluation statistics have been obtained by using 30% of the dataset as tests.
 
 ```
-Correctly Classified Instances      512926               65.9836 %
-Incorrectly Classified Instances    264428               34.0164 %
-Kappa statistic                          0.5196
-Mean absolute error                      0.0179
-Root mean squared error                  0.0954
-Relative absolute error                 59.7094 %
-Root relative squared error             77.8616 %
-Coverage of cases (0.95 level)          94.9072 %
-Mean rel. region size (0.95 level)      24.3993 %
-Total Number of Instances           777354
+Correctly Classified Instances      416483               75.1246 %
+Incorrectly Classified Instances    137907               24.8754 %
+Kappa statistic                          0.5399
+Mean absolute error                      0.0132
+Root mean squared error                  0.0824
+Relative absolute error                 33.7708 %
+Root relative squared error             58.8408 %
+Coverage of cases (0.95 level)          95.9882 %
+Mean rel. region size (0.95 level)      18.268  %
+Total Number of Instances           554390
 ```
 
-As you can see, we've got a pretty accuracy of 66%.
+As you can see, we've got a pretty accuracy of 75%.
 
-### Hoeffding Tree
+#### Hoeffding Tree
 This classifier performs similarly to (slightly better than, actually) Naive Bayes, on which it internally relies.
 Supplying even more data to this classifier would probably improve the results.
 
 ```
-Correctly Classified Instances      563836               72.5327 %
-Incorrectly Classified Instances    213518               27.4673 %
-Kappa statistic                          0.5792
-Mean absolute error                      0.0283
-Root mean squared error                  0.1128
-Relative absolute error                 94.2586 %
-Root relative squared error             92.0916 %
-Coverage of cases (0.95 level)          97.164  %
-Mean rel. region size (0.95 level)      78.072  %
-Total Number of Instances           777354
+Correctly Classified Instances      446365               80.5146 %
+Incorrectly Classified Instances    108025               19.4854 %
+Kappa statistic                          0.6024
+Mean absolute error                      0.0247
+Root mean squared error                  0.1031
+Relative absolute error                 63.0729 %
+Root relative squared error             73.6531 %
+Coverage of cases (0.95 level)          96.4226 %
+Mean rel. region size (0.95 level)      75.3769 %
+Total Number of Instances           554390
 ```
 
-### Adaboost
+#### Adaboost
 Adaboost is faster, but produces slightly worst results:
 
 ```
-Correctly Classified Instances      377407               48.5502 %
-Incorrectly Classified Instances    399947               51.4498 %
+Correctly Classified Instances      355513               64.1269 %
+Incorrectly Classified Instances    198877               35.8731 %
 Kappa statistic                          0
-Mean absolute error                      0.0258
-Root mean squared error                  0.1136
-Relative absolute error                 85.9708 %
-Root relative squared error             92.7215 %
-Coverage of cases (0.95 level)          95.9657 %
-Mean rel. region size (0.95 level)      44.1019 %
-Total Number of Instances           777354
+Mean absolute error                      0.0195
+Root mean squared error                  0.0987
+Relative absolute error                 83.6947 %
+Root relative squared error             91.461  %
+Coverage of cases (0.95 level)          96.8358 %
+Mean rel. region size (0.95 level)      34.8949 %
+Total Number of Instances           554390
 ```
 
-### Other classifiers
+### Results w/ LocationToWordsVector
+We have successfully experimented different values related to the number of words to keep.
+We'll provide here many of our results, obtained with a parameter of words to keep set to 700.
+Again, we've evaluated the classifiers by using 30% of the dataset as tests.
+
+#### Hoeffding Tree
+
+```
+Correctly Classified Instances      403425               72.7692 %
+Incorrectly Classified Instances    150965               27.2308 %
+Kappa statistic                          0.4113
+Mean absolute error                      0.0149
+Root mean squared error                  0.0889
+Relative absolute error                 38.0561 %
+Root relative squared error             63.5091 %
+Coverage of cases (0.95 level)          92.499  %
+Mean rel. region size (0.95 level)      22.3975 %
+Total Number of Instances           554390
+```
+
+As you can see, the accuracy of this classifier is slightly worsts than the one obtained without enabling the LocationToWordsVector feature.
+Nonetheless, our experiments showed us that, by letting the classifier keep a greater number of words, the precision would have probably improved.
+
+#### Naive Bayes
+
+```
+Correctly Classified Instances      372199               67.1367 %
+Incorrectly Classified Instances    182191               32.8633 %
+Kappa statistic                          0.4972
+Mean absolute error                      0.0164
+Root mean squared error                  0.0925
+Relative absolute error                 41.7555 %
+Root relative squared error             66.0487 %
+Coverage of cases (0.95 level)          91.2598 %
+Mean rel. region size (0.95 level)      20.7434 %
+Total Number of Instances           554390   
+```
+
+Again, Naive Bayes if faster than Hoeffding Tree, but looses in terms of precision.
+
+### Other classifiers / experiments
 Our system includes, out-of-the-box, a great number of classifiers and can be easily extended.
 We've tested all those classifiers, but we couldn't manage to gather enough main memory space to report their results with our whole dataset.
 Anyway, we'd be happy to hear from you. :)
 
 ### Performance
 We've chosen by design and for simplicity, to store our data in an SQLite database.
-It suits our needs, because it can be easily handled by Maven without any other dependency, but is slow while querying data in our big dataset (a Users-Tweets joint query takes ~10 seconds).
+It suits our needs, because it can be easily handled by Maven without any other dependency, but is slow while querying data in our big dataset (a Users-Tweets joint query takes ~30 seconds).
 Switching to a faster database storage would dramatically improve the performance of the system but is beyond the scope of our project.
 
 Storage aside, each learning algorithm comes with its own performances.

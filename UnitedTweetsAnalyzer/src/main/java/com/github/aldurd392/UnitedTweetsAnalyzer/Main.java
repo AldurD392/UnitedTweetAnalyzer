@@ -30,6 +30,7 @@ class Main {
     private static final String EVALUATION_RATE = "e";
     private static final String OUTPUT_PATH = "o";
     private static final String LEARNER_CL = "c";
+    private static final String LEARNER_WORDS = "w";
     private static final String HELP = "h";
 
     /**
@@ -145,6 +146,17 @@ class Main {
                 .build();
         options.addOption(learner_cl);
 
+        Option learner_words = Option.builder(LEARNER_WORDS)
+                .longOpt("learner_words")
+                .desc("If set to a numeric value greater than 0, while learning / classifying " +
+                        "convert the location attribute to a vector of words." +
+                        "The default of 0 means that this feature is disabled")
+                .hasArg(true)
+                .required(false)
+                .type(Integer.class)
+                .build();
+        options.addOption(learner_words);
+
         Option help = Option.builder(HELP)
                 .longOpt("help")
                 .desc("print this help")
@@ -236,6 +248,13 @@ class Main {
                     throw new ParseException("Invalid classifier name " + classifier_name);
                 }
 
+                int wordsToKeep = 0;
+                try {
+                    wordsToKeep = Integer.parseInt(commandLine.getOptionValue(LEARNER_WORDS, "0"));
+                } catch (NumberFormatException e) {
+                    logger.warn("Invalid -" + LEARNER_WORDS + "value. Ignoring it...");
+                }
+
                 if (TASK_TYPE[1].equals(value)) {
                     String evaluation_rate_string = commandLine.getOptionValue(EVALUATION_RATE, DEFAULT_EVALUATION_RATE);
                     ParseException bad_evaluation_rate = new ParseException("Invalid evaluation value " + evaluation_rate_string);
@@ -259,7 +278,11 @@ class Main {
                         Learner bestLearner = null;
 
                         for (String classifier : Learner.classifiers.keySet()) {
-                            Learner learner = new Learner(classifier, null);
+                            Learner learner = new Learner(
+                                    classifier,
+                                    null,
+                                    wordsToKeep
+                            );
                             if ((eval = learner.buildAndEvaluate(evaluation_rate)) == null) {
                                 return;
                             }
@@ -284,7 +307,8 @@ class Main {
                     } else {
                         Learner learner = new Learner(
                                 classifier_name,
-                                commandLine.getOptionValue(LEARNER_CL, null)
+                                commandLine.getOptionValue(LEARNER_CL, null),
+                                wordsToKeep
                         );
 
                         if ((eval = learner.buildAndEvaluate(evaluation_rate)) == null) {
@@ -296,7 +320,8 @@ class Main {
                 } else {
                     Learner learner = new Learner(
                             classifier_name,
-                            commandLine.getOptionValue(LEARNER_CL, null)
+                            commandLine.getOptionValue(LEARNER_CL, null),
+                            wordsToKeep
                     );
                     learner.buildAndClassify(commandLine.getOptionValue(OUTPUT_PATH, null));
                 }
