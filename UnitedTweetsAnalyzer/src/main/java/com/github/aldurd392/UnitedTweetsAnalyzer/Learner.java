@@ -99,16 +99,26 @@ class Learner {
      * We'll keep the classifier here.
      */
     private AbstractClassifier classifier = null;
+    /**
+     * Specifies the number of words to keep while converting
+     * the location attribute to a vector of words.
+     * If <= 0, this feature is disabled.
+     */
+    private final int wordsToKeep;
 
     /**
      * Build a new learner
      *
      * @param classifier_name the name of the classifier used by the learner.
      * @param cl_config       Weka command line configuration for the learner.
+     * @param wordsToKeep     specifies the number of words to keep while converting
+     *                        the location attribute to a vector of words.
+     *                        If <= 0, this feature is disabled.
      * @throws Exception on error.
      */
-    public Learner(String classifier_name, String cl_config) throws Exception {
+    public Learner(String classifier_name, String cl_config, int wordsToKeep) throws Exception {
         super();
+        this.wordsToKeep = wordsToKeep;
 
         this.classifierFactory(classifier_name, cl_config);
     }
@@ -152,16 +162,80 @@ class Learner {
     }
 
     /**
+     * This method has to be called after generic data setup {@link #setUpData(Instances, Filter[])}.
+     * Split the whole universe in training and classification data.
+     * Remove un-needed attributes.
+     *
+     * @param universe The whole universe of training and classification instances.
+     * @throws Exception On remove filter setup error.
+     */
+    private void setupClassificationData(Instances universe) throws Exception {
+        assert (universe.attribute(Storage.UTC_OFFSET).type() == 1) : "Got bad types from database";
+
+        this.training_data = new Instances(universe, universe.numInstances() - Constants.classification_limit);
+        this.classification_data = new Instances(universe, Constants.classification_limit);
+        final Attribute class_attribute = universe.classAttribute();
+
+        /**
+         * Split the data in training and unlabeled.
+         * We could use a filter, but this is more efficient in main memory.
+         */
+        for (int i = universe.numInstances() - 1; i >= 0; i--) {
+            Instance instance = universe.instance(i);
+            universe.delete(i);
+
+            if (Utils.isMissingValue(instance.value(class_attribute))) {
+                this.classification_data.add(instance);
+            } else {
+                this.training_data.add(instance);
+            }
+        }
+
+        assert (this.classification_data.numInstances() <= Constants.classification_limit) :
+                "Bad number of classification data (" +
+                        this.classification_data.numInstances() +
+                        "), filter is likely to be not working.";
+
+        assert this.training_data.equalHeadersMsg(this.classification_data) == null :
+                "Bad instances headers: " + this.training_data.equalHeadersMsg(this.classification_data);
+
+        /**
+         * Remove the ID from the training data.
+         */
+        Remove remove = new Remove();
+        remove.setAttributeIndices(String.format("%d", this.training_data.attribute(Storage.ID).index() + 1));
+        remove.setInputFormat(this.training_data);
+        this.training_data = Filter.useFilter(this.training_data, remove);
+        this.training_data.randomize(new Random());
+
+        assert this.training_data.numAttributes() == this.classification_data.numAttributes() - 1 :
+                "Training data filtering is not working, bad number of attributes.";
+        assert this.training_data.attribute(Storage.ID) == null :
+                "ID attributes can still be found after filtering!";
+    }
+
+    /**
+     * This function needs to be called after generic data setup.
+     * ATM, it randomize the order of the instances.
+     *
+     * @param training_data Instances to be set up.
+     */
+    private void setupTrainingData(Instances training_data) {
+        training_data.randomize(new Random());
+    }
+
+    /**
      * Load data from the DB and store them in instance variables.
      * Note that we always randomize the order of the retrieved instances.
-     * <p>
+     * <p/>
      * When we want to classify unlabeled instances, we have to make sure that
      * the classifier knows the entire universe of attribute's values.
      * Because of this, we load with a single query all the data we needs,
      * and the we spit them.
      * In this way the headers of the Instances set will contain the correct
      * information.
-     * In addition, we convert the "location" attribute to a vector of words.
+     * In addition, if the related property {@link #wordsToKeep} is set,
+     * we convert the "location" attribute to a vector of words.
      * It is nominal in our dataset, so we convert it to a string and then we
      * split it.
      *
@@ -176,143 +250,111 @@ class Learner {
         try {
             query = new InstanceQuery();
 
-            NominalToString nomToStringFilter = new NominalToString();
-            StringToWordVector stringFilter = new StringToWordVector();
-            NumericToNominal numericToNominal = new NumericToNominal();
+            if (this.wordsToKeep > 0) {
+                NominalToString nomToStringFilter = new NominalToString();
+                StringToWordVector stringFilter = new StringToWordVector();
+                NumericToNominal numericToNominal = new NumericToNominal();
 
-            stringFilter.setDoNotOperateOnPerClassBasis(true);
-            stringFilter.setOutputWordCounts(false);
+                stringFilter.setDoNotOperateOnPerClassBasis(true);
+                stringFilter.setOutputWordCounts(false);
 
-            final int wordsToKeep = 750;
-            stringFilter.setWordsToKeep(wordsToKeep);
-            stringFilter.setStemmer(null);
-            stringFilter.setAttributeNamePrefix(LOCATION_PREFIX);
-            stringFilter.setIDFTransform(true);
+                final int wordsToKeep = 750;
+                stringFilter.setWordsToKeep(wordsToKeep);
+                stringFilter.setStemmer(null);
+                stringFilter.setAttributeNamePrefix(LOCATION_PREFIX);
+                stringFilter.setIDFTransform(true);
 
-            /**
-             * Remove from the WordVector all those words with length 1.
-             */
-            stringFilter.setStopwordsHandler(new StopwordsHandler() {
-                @Override
-                public boolean isStopword(String word) {
-                    return word.length() <= 1 ||
-                            (word.length() == 2 && !Constants.countryCodes.contains(word)) ||
-                            Constants.stopWords.contains(word);
-                }
-            });
+                /**
+                 * Remove from the WordVector all those words with length 1,
+                 * or defined as stopwords.
+                 */
+                stringFilter.setStopwordsHandler(new StopwordsHandler() {
+                    @Override
+                    public boolean isStopword(String word) {
+                        return word.length() <= 1 ||
+                                (word.length() == 2 && !Constants.countryCodes.contains(word)) ||
+                                Constants.stopWords.contains(word);
+                    }
+                });
 
-            Filter[] filters = {nomToStringFilter, stringFilter, numericToNominal};
+                Filter[] filters = {nomToStringFilter, stringFilter, numericToNominal};
 
-            String locationAttributeString;
-            if (isTraining) {
-                query.setQuery(Storage.TRAINING_QUERY);
-                Instances instances = query.retrieveInstances();
+                String locationAttributeString;
+                if (isTraining) {
+                    query.setQuery(Storage.TRAINING_QUERY);
+                    Instances instances = query.retrieveInstances();
 
-                locationAttributeString = String.format(
-                        "%d", instances.attribute(Storage.LOCATION).index() + 1
-                );
+                    locationAttributeString = String.format(
+                            "%d", instances.attribute(Storage.LOCATION).index() + 1
+                    );
 
-                nomToStringFilter.setAttributeIndexes(
-                        locationAttributeString
-                );
+                    nomToStringFilter.setAttributeIndexes(
+                            locationAttributeString
+                    );
 
-                stringFilter.setAttributeIndices(
-                        locationAttributeString
-                );
+                    stringFilter.setAttributeIndices(
+                            locationAttributeString
+                    );
 
-                numericToNominal.setAttributeIndicesArray(
-                        new int[]{
-                                instances.attribute(Storage.UTC_OFFSET).index(),
-                                instances.attribute(Storage.LANG).index(),
-                                instances.attribute(Storage.TIMEZONE).index(),
-                                instances.attribute(Storage.COUNTRY).index(),
-                        }
-                );
-                numericToNominal.setInvertSelection(true);
+                    numericToNominal.setAttributeIndicesArray(
+                            new int[]{
+                                    instances.attribute(Storage.UTC_OFFSET).index(),
+                                    instances.attribute(Storage.LANG).index(),
+                                    instances.attribute(Storage.TIMEZONE).index(),
+                                    instances.attribute(Storage.COUNTRY).index(),
+                            }
+                    );
+                    numericToNominal.setInvertSelection(true);
 
-                this.training_data = setUpData(instances, filters);
-                this.training_data.randomize(new Random());
+                    this.training_data = setUpData(instances, filters);
+                    assert (this.training_data.numAttributes() > 3 + wordsToKeep) :
+                            "StringToWordVector doesn't seem to be working!";
 
-                assert (this.training_data.numAttributes() > 3 + wordsToKeep) :
-                        "StringToWordVector doesn't seem to be working!";
+                    this.setupTrainingData(this.training_data);
+                } else {
+                    query.setQuery(Storage.CLASSIFICATION_QUERY);
+                    Instances universe = query.retrieveInstances();
 
-                for (Attribute attribute : Collections.list(this.training_data.enumerateAttributes())) {
-                    logger.debug(attribute.name());
+                    locationAttributeString = String.format(
+                            "%d", universe.attribute(Storage.LOCATION).index() + 1
+                    );
+
+                    nomToStringFilter.setAttributeIndexes(
+                            locationAttributeString
+                    );
+
+                    stringFilter.setAttributeIndices(
+                            locationAttributeString
+                    );
+
+                    numericToNominal.setAttributeIndicesArray(
+                            new int[]{
+                                    universe.attribute(Storage.ID).index(),
+                                    universe.attribute(Storage.UTC_OFFSET).index(),
+                                    universe.attribute(Storage.LANG).index(),
+                                    universe.attribute(Storage.TIMEZONE).index(),
+                                    universe.attribute(Storage.COUNTRY).index(),
+                            }
+                    );
+                    numericToNominal.setInvertSelection(true);
+
+                    universe = setUpData(universe, filters);
+                    this.setupClassificationData(universe);
                 }
             } else {
-                query.setQuery(Storage.CLASSIFICATION_QUERY);
-                Instances universe = query.retrieveInstances();
+                if (isTraining) {
+                    query.setQuery(Storage.TRAINING_QUERY);
+                    Instances instances = query.retrieveInstances();
 
-                locationAttributeString = String.format(
-                        "%d", universe.attribute(Storage.LOCATION).index() + 1
-                );
+                    this.training_data = setUpData(instances, null);
+                    this.setupTrainingData(this.training_data);
+                } else {
+                    query.setQuery(Storage.CLASSIFICATION_QUERY);
+                    Instances universe = query.retrieveInstances();
 
-                nomToStringFilter.setAttributeIndexes(
-                        locationAttributeString
-                );
-
-                stringFilter.setAttributeIndices(
-                        locationAttributeString
-                );
-
-                numericToNominal.setAttributeIndicesArray(
-                        new int[]{
-                                universe.attribute(Storage.ID).index(),
-                                universe.attribute(Storage.UTC_OFFSET).index(),
-                                universe.attribute(Storage.LANG).index(),
-                                universe.attribute(Storage.TIMEZONE).index(),
-                                universe.attribute(Storage.COUNTRY).index(),
-                        }
-                );
-                numericToNominal.setInvertSelection(true);
-
-                /**
-                 * Load the whole universe of data:
-                 * training and unlabeled.
-                 */
-                universe = setUpData(universe, filters);
-                assert (universe.attribute(Storage.UTC_OFFSET).type() == 1) : "Got bad types from database";
-
-                this.training_data = new Instances(universe, universe.numInstances() - 200);
-                this.classification_data = new Instances(universe, 200);
-                final Attribute class_attribute = universe.classAttribute();
-
-                /**
-                 * Split the data in training and unlabeled.
-                 * We could use a filter, but this is more efficient in main memory.
-                 */
-                for (int i = universe.numInstances() - 1; i >= 0; i--) {
-                    Instance instance = universe.instance(i);
-                    universe.delete(i);
-
-                    if (Utils.isMissingValue(instance.value(class_attribute))) {
-                        this.classification_data.add(instance);
-                    } else {
-                        this.training_data.add(instance);
-                    }
+                    universe = setUpData(universe, null);
+                    this.setupClassificationData(universe);
                 }
-
-                assert (this.classification_data.numInstances() <= Constants.classification_limit) :
-                        "Bad number of classification data (" +
-                                this.classification_data.numInstances() +
-                                "), filter is likely to be not working.";
-
-                assert this.training_data.equalHeadersMsg(this.classification_data) == null :
-                        "Bad instances headers: " + this.training_data.equalHeadersMsg(this.classification_data);
-
-                /**
-                 * Remove the ID from the training data.
-                 */
-                Remove remove = new Remove();
-                remove.setAttributeIndices(String.format("%d", this.training_data.attribute(Storage.ID).index() + 1));
-                remove.setInputFormat(this.training_data);
-                this.training_data = Filter.useFilter(this.training_data, remove);
-                this.training_data.randomize(new Random());
-
-                assert this.training_data.numAttributes() == this.classification_data.numAttributes() - 1 :
-                        "Training data filtering is not working, bad number of attributes.";
-                assert this.training_data.attribute(Storage.ID) == null :
-                        "ID attributes can still be found after filtering!";
             }
         } catch (Exception e) {
             logger.error("Error while executing DB query", e);
@@ -541,20 +583,27 @@ class Learner {
                 return;
             }
 
-            StringBuilder location = new StringBuilder();
-            for (Attribute attribute : Collections.list(i.enumerateAttributes())) {
-                if (attribute.name().startsWith(LOCATION_PREFIX) &&
-                        i.value(attribute) > 0) {
-                    location.append(attribute.name().substring(LOCATION_PREFIX.length()));
-                    location.append(" ");
+            String location;
+            if (this.wordsToKeep > 0) {
+                StringBuilder locationBuilder = new StringBuilder();
+                for (Attribute attribute : Collections.list(i.enumerateAttributes())) {
+                    if (attribute.name().startsWith(LOCATION_PREFIX) &&
+                            i.value(attribute) > 0) {
+                        locationBuilder.append(attribute.name().substring(LOCATION_PREFIX.length()));
+                        locationBuilder.append(" ");
+                    }
                 }
+
+                location = locationBuilder.toString();
+            } else {
+                location = i.stringValue(this.classification_data.attribute(Storage.LOCATION));
             }
 
 
             final Object[] values = {
                     id,
                     String.format(Constants.twitter_user_intent, id),
-                    location.toString(),
+                    location,
                     i.stringValue(attribute_lang),
                     i.stringValue(attribute_utc_offset),
                     i.stringValue(attribute_timezone),
